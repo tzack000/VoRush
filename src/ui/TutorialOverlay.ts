@@ -1,18 +1,16 @@
-import Phaser from 'phaser';
+import { el } from './dom';
 
 const STORAGE_KEY = 'vorush.tutorial.done';
 
 /**
- * 首次教学引导：高亮圈 + 提示文字，每次只教一个操作。
- * 重玩不重复强制教学（localStorage 记录，失败时降级为每局只教一次）。
+ * 首次教学引导（DOM）：高亮圈 + 提示文字，每次只教一个操作。
+ * 坐标为屏幕像素；3D 世界目标由控制器投影后传入。
  */
 export class TutorialOverlay {
-  private container: Phaser.GameObjects.Container;
-  private shown = false;
+  private ring: HTMLElement | null = null;
+  private label: HTMLElement | null = null;
 
-  constructor(private scene: Phaser.Scene) {
-    this.container = scene.add.container(0, 0).setDepth(900).setVisible(false);
-  }
+  constructor(private uiRoot: HTMLElement) {}
 
   static shouldShow(): boolean {
     try {
@@ -26,46 +24,40 @@ export class TutorialOverlay {
     try {
       globalThis.localStorage?.setItem(STORAGE_KEY, '1');
     } catch {
-      // 降级：本局内仍受 shown 标记保护
+      // 降级：仅本局有效
     }
   }
 
-  /** 在 (x, y) 处显示高亮圈与提示文字 */
+  /** 在屏幕 (x, y) 处显示高亮圈与提示文字 */
   pointTo(x: number, y: number, text: string): void {
-    this.container.removeAll(true);
-    const ring = this.scene.add.circle(x, y, 56).setStrokeStyle(5, 0xf1c40f);
+    this.clear();
+    this.ring = el('div', { id: 'tutorial-ring' });
+    this.ring.style.left = `${x}px`;
+    this.ring.style.top = `${y}px`;
+
+    this.label = el('div', { id: 'tutorial-label', text });
     // 提示文字限制在屏幕内，避免边缘目标裁剪
-    const labelX = Phaser.Math.Clamp(x, 220, 1060);
-    const labelY = y - 90 < 60 ? y + 110 : y - 90;
-    const label = this.scene.add
-      .text(labelX, labelY, text, {
-        fontSize: '28px',
-        color: '#ffffff',
-        fontStyle: 'bold',
-        backgroundColor: '#000000aa',
-        padding: { x: 14, y: 8 },
-      })
-      .setOrigin(0.5);
-    this.container.add([ring, label]);
-    this.container.setVisible(true);
-    this.scene.tweens.killTweensOf(ring);
-    this.scene.tweens.add({
-      targets: ring,
-      scale: { from: 1, to: 1.15 },
-      alpha: { from: 1, to: 0.5 },
-      duration: 500,
-      yoyo: true,
-      repeat: -1,
-    });
-    this.shown = true;
+    const labelX = Math.min(Math.max(x, 200), window.innerWidth - 200);
+    const labelY = y - 110 < 20 ? y + 110 : y - 110;
+    this.label.style.left = `${labelX}px`;
+    this.label.style.top = `${labelY}px`;
+
+    this.uiRoot.append(this.ring, this.label);
+  }
+
+  /** 高亮一个 DOM 元素（按钮等） */
+  pointToElement(target: HTMLElement, text: string): void {
+    const rect = target.getBoundingClientRect();
+    this.pointTo(rect.left + rect.width / 2, rect.top + rect.height / 2, text);
   }
 
   clear(): void {
-    this.container.setVisible(false);
-    this.container.removeAll(true);
+    this.ring?.remove();
+    this.label?.remove();
+    this.ring = null;
+    this.label = null;
   }
 
-  /** 完成全部教学步骤后调用：本局 + 永久不再显示 */
   finish(): void {
     this.clear();
     TutorialOverlay.markDone();

@@ -1,41 +1,46 @@
 import type { WordDef } from '../data/words';
+import { LEVEL_WORDS } from '../data/words';
 
 /**
- * 单词发音播放。
- * 正式实现：预录 m4a 经 Phaser WebAudio 播放（iPad 上可靠，
- * 音效同通道，首次点击"开始"时由 unlockAudio 完成手势解锁）。
- * speechSynthesis 仅作为音频缺失时的兜底（桌面调试用）。
+ * 单词发音播放：预录 m4a 经 HTMLAudioElement 播放。
+ * iOS 要求在用户手势中先解锁（unlock 内对每个元素 play+pause）。
  */
 export class WordAudio {
-  private static scene: Phaser.Scene | null = null;
+  private static players = new Map<string, HTMLAudioElement>();
 
-  /** LevelScene create 时注入 */
-  static init(scene: Phaser.Scene): void {
-    this.scene = scene;
+  /** 预加载全部单词音频（Game 启动时调用一次） */
+  static init(): void {
+    if (this.players.size > 0) return;
+    for (const w of LEVEL_WORDS) {
+      const audio = new Audio(`assets/audio/words/${w.id}.m4a`);
+      audio.preload = 'auto';
+      this.players.set(w.id, audio);
+    }
   }
 
-  /** 在首次用户手势中调用（WebAudio 解锁由 sfx.unlockAudio 负责，此处无需操作） */
+  /** 在首次用户手势中调用，解锁 iOS 音频播放 */
   static unlock(): void {
-    // Phaser 会在首次触摸时自动解锁其 WebAudio 上下文
+    for (const audio of this.players.values()) {
+      audio.muted = true;
+      audio
+        .play()
+        .then(() => {
+          audio.pause();
+          audio.currentTime = 0;
+          audio.muted = false;
+        })
+        .catch(() => {
+          audio.muted = false;
+        });
+    }
   }
 
   static play(word: WordDef): void {
-    const scene = this.scene;
-    if (scene && scene.cache.audio.exists(word.audioKey)) {
-      scene.sound.play(word.audioKey);
-      return;
-    }
-    // 兜底：音频缺失时用系统语音（iOS 上不可靠，仅桌面调试场景）
-    try {
-      const synth = window.speechSynthesis;
-      if (!synth) return;
-      synth.cancel();
-      const u = new SpeechSynthesisUtterance(word.text);
-      u.lang = 'en-US';
-      u.rate = 0.75;
-      setTimeout(() => synth.speak(u), 60);
-    } catch {
-      // 静默降级
-    }
+    const audio = this.players.get(word.id);
+    if (!audio) return;
+    audio.currentTime = 0;
+    void audio.play().catch(() => {
+      // 未解锁或不支持时静默降级
+    });
   }
 }

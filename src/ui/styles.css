@@ -1,0 +1,378 @@
+/* VoRush DOM UI 样式：儿童大按钮（≥60pt≈80px）、横屏、pastel 配色 */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #2c3e50;
+  touch-action: none;
+  font-family: 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+}
+
+#game {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+}
+
+#game canvas {
+  display: block;
+}
+
+/* DOM UI 覆盖层：默认不拦截指针，各面板自行开启 */
+#ui {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+#ui > * {
+  pointer-events: auto;
+}
+
+/* ---------- 通用按钮 ---------- */
+
+.btn {
+  min-width: 80px;
+  min-height: 80px;
+  padding: 12px 28px;
+  border: none;
+  border-radius: 20px;
+  background: #4a90d9;
+  color: #fff;
+  font-size: 30px;
+  font-weight: bold;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.2);
+  transition:
+    transform 0.08s,
+    opacity 0.15s;
+}
+
+.btn:active {
+  transform: scale(0.94);
+}
+
+.btn:disabled {
+  background: #95a5a6;
+  opacity: 0.55;
+  box-shadow: none;
+}
+
+.btn-green {
+  background: #27ae60;
+}
+
+.btn-orange {
+  background: #f39c12;
+}
+
+/* ---------- HUD ---------- */
+
+#hud {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 48px;
+  padding: 0 32px;
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 30px;
+  font-weight: bold;
+  pointer-events: none;
+}
+
+/* ---------- 模态覆盖层 ---------- */
+
+.modal-dim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-panel {
+  background: #fff8e7;
+  border: 6px solid #8b5a2b;
+  border-radius: 24px;
+  padding: 32px 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.modal-title {
+  font-size: 44px;
+  color: #8b5a2b;
+  font-weight: bold;
+}
+
+/* ---------- 答题 ---------- */
+
+.quiz-panel {
+  width: 78%;
+  max-width: 980px;
+}
+
+.quiz-progress {
+  font-size: 26px;
+  color: #8b5a2b;
+}
+
+.quiz-hint {
+  font-size: 32px;
+  color: #333;
+}
+
+.quiz-emoji {
+  font-size: 110px;
+  line-height: 1.2;
+}
+
+.quiz-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.quiz-option {
+  min-height: 120px;
+  font-size: 52px;
+  background: #fff;
+  color: #2c3e50;
+  border: 4px solid #4a90d9;
+  border-radius: 20px;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: bold;
+  transition: transform 0.08s;
+}
+
+.quiz-option:active {
+  transform: scale(0.95);
+}
+
+.quiz-option:disabled {
+  opacity: 0.4;
+}
+
+.quiz-option.word-option {
+  font-size: 44px;
+}
+
+.quiz-option.guided-glow {
+  animation: glow-pulse 0.7s ease-in-out infinite alternate;
+  border-color: #f1c40f;
+}
+
+@keyframes glow-pulse {
+  from {
+    box-shadow: 0 0 0 0 rgba(241, 196, 15, 0.9);
+    transform: scale(1);
+  }
+  to {
+    box-shadow: 0 0 24px 8px rgba(241, 196, 15, 0.7);
+    transform: scale(1.05);
+  }
+}
+
+.quiz-option.shake {
+  animation: opt-shake 0.25s;
+}
+
+@keyframes opt-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-10px);
+  }
+  75% {
+    transform: translateX(10px);
+  }
+}
+
+.quiz-feedback {
+  min-height: 44px;
+  font-size: 32px;
+  font-weight: bold;
+  color: #27ae60;
+}
+
+.quiz-feedback.guided {
+  color: #e67e22;
+}
+
+/* ---------- 布防 ---------- */
+
+#build-bar {
+  position: absolute;
+  right: 24px;
+  bottom: 20px;
+  display: flex;
+  gap: 16px;
+}
+
+.build-menu {
+  position: absolute;
+  right: 24px;
+  top: 90px;
+  background: #fff8e7;
+  border: 5px solid #8b5a2b;
+  border-radius: 20px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.tower-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #fff;
+  border: 3px solid #4a90d9;
+  border-radius: 16px;
+  padding: 12px 18px;
+  min-height: 96px;
+  min-width: 300px;
+  cursor: pointer;
+}
+
+.tower-card:active {
+  transform: scale(0.97);
+}
+
+.tower-card .card-emoji {
+  font-size: 48px;
+}
+
+.tower-card .card-name {
+  font-size: 28px;
+  font-weight: bold;
+  color: #2c3e50;
+}
+
+.tower-card .card-hint {
+  font-size: 22px;
+  color: #7f8c8d;
+}
+
+.tower-card .card-price {
+  font-size: 26px;
+  font-weight: bold;
+  color: #27ae60;
+}
+
+.tower-card .card-price.cant-afford {
+  color: #e74c3c;
+}
+
+/* ---------- 结算 ---------- */
+
+.star-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 30px;
+}
+
+.star-row .star {
+  font-size: 48px;
+}
+
+.star-row.earned .star {
+  color: #f1c40f;
+}
+
+.star-row:not(.earned) {
+  color: #95a5a6;
+}
+
+.star-row:not(.earned) .star {
+  color: #bdc3c7;
+}
+
+/* ---------- 教学高亮 ---------- */
+
+#tutorial-ring {
+  position: absolute;
+  width: 120px;
+  height: 120px;
+  border: 6px solid #f1c40f;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  animation: ring-pulse 0.9s ease-in-out infinite alternate;
+  z-index: 40;
+}
+
+@keyframes ring-pulse {
+  from {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1.15);
+    opacity: 0.55;
+  }
+}
+
+#tutorial-label {
+  position: absolute;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  font-size: 30px;
+  font-weight: bold;
+  padding: 12px 22px;
+  border-radius: 14px;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 41;
+}
+
+/* ---------- 竖屏提示 ---------- */
+
+#rotate-tip {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: #2c3e50;
+  color: #fff;
+  font-size: 40px;
+  font-weight: bold;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  text-align: center;
+  padding: 40px;
+}
+
+@media (orientation: portrait) {
+  #rotate-tip {
+    display: flex;
+  }
+}

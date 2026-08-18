@@ -1,5 +1,5 @@
-import Phaser from 'phaser';
 import type { EnemyDef } from '../data/waves';
+import type { Path } from './Path';
 
 /** 骑士等拦截者的最小接口（避免循环依赖） */
 export interface Blocker {
@@ -11,46 +11,38 @@ export type EnemyUpdateResult = 'alive' | 'exited';
 
 const ENEMY_ATTACK_INTERVAL_MS = 1000;
 
-export class Enemy extends Phaser.GameObjects.Container {
+/**
+ * 敌人（纯逻辑）：沿路径推进、被拦截交战、生命。
+ * 表现层（3D 模型/血条）由视图绑定读取 x/z/hp 同步。
+ */
+export class Enemy {
   hp: number;
   readonly maxHp: number;
   readonly def: EnemyDef;
-  /** 已沿路径行进的距离（像素） */
+  /** 已沿路径行进的距离（世界单位） */
   dist = 0;
   blockedBy: Blocker | null = null;
+  /** 当前世界坐标（由 updateEnemy 维护） */
+  x = 0;
+  z = 0;
+  /** 视图标记：被移除后视图停止同步 */
+  active = true;
   private attackCd = 0;
-  private hpBarBg: Phaser.GameObjects.Rectangle;
-  private hpBar: Phaser.GameObjects.Rectangle;
-  private readonly hpBarWidth = 40;
 
-  constructor(scene: Phaser.Scene, def: EnemyDef, x: number, y: number) {
-    super(scene, x, y);
+  constructor(def: EnemyDef, startX: number, startZ: number) {
     this.def = def;
     this.hp = def.hp;
     this.maxHp = def.hp;
-
-    const body = scene.add.image(0, 0, def.textureKey);
-    this.hpBarBg = scene.add
-      .rectangle(0, -36, this.hpBarWidth, 6, 0x000000, 0.5)
-      .setOrigin(0.5);
-    this.hpBar = scene.add
-      .rectangle(-this.hpBarWidth / 2, -36, this.hpBarWidth, 6, 0x2ecc71)
-      .setOrigin(0, 0.5);
-    this.add([body, this.hpBarBg, this.hpBar]);
-    scene.add.existing(this);
+    this.x = startX;
+    this.z = startZ;
   }
 
   /**
    * 每帧推进（仅战斗未暂停时调用）。
    * 返回 'exited' 表示到达出口，调用方负责扣生命并移除。
    */
-  updateEnemy(
-    dtMs: number,
-    path: Phaser.Curves.Path,
-    pathLength: number,
-  ): EnemyUpdateResult {
+  updateEnemy(dtMs: number, path: Path): EnemyUpdateResult {
     if (this.blockedBy && this.blockedBy.alive) {
-      // 被骑士拦截：停下交战
       this.attackCd -= dtMs;
       if (this.attackCd <= 0) {
         this.attackCd = ENEMY_ATTACK_INTERVAL_MS;
@@ -61,19 +53,17 @@ export class Enemy extends Phaser.GameObjects.Container {
     this.blockedBy = null;
 
     this.dist += this.def.speed * (dtMs / 1000);
-    if (this.dist >= pathLength) return 'exited';
+    if (this.dist >= path.length) return 'exited';
 
-    const p = path.getPoint(this.dist / pathLength);
-    this.setPosition(p.x, p.y);
+    const p = path.pointAt(this.dist);
+    this.x = p.x;
+    this.z = p.z;
     return 'alive';
   }
 
   /** 返回 true 表示被击败 */
   takeDamage(amount: number): boolean {
     this.hp -= amount;
-    const ratio = Phaser.Math.Clamp(this.hp / this.maxHp, 0, 1);
-    this.hpBar.width = this.hpBarWidth * ratio;
-    this.hpBar.fillColor = ratio > 0.5 ? 0x2ecc71 : ratio > 0.25 ? 0xf39c12 : 0xe74c3c;
     return this.hp <= 0;
   }
 }

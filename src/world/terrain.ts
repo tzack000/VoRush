@@ -1,13 +1,15 @@
 import * as THREE from 'three';
 import { islandHeight } from './coords';
 
-/** Bad North 风格 pastel 调色板 */
+/** Bad North 风格 pastel 调色板（低饱和、灰调） */
 export const PALETTE = {
-  grass: new THREE.Color('#8fc97a'),
-  grassDark: new THREE.Color('#7dbb6b'),
-  path: new THREE.Color('#d9c39a'),
-  sand: new THREE.Color('#e8d9b0'),
-  water: new THREE.Color('#79c4e0'),
+  grass: new THREE.Color('#a9bd8b'),
+  grassDark: new THREE.Color('#97ad7c'),
+  path: new THREE.Color('#d9cbb0'),
+  sand: new THREE.Color('#ded3b3'),
+  rock: new THREE.Color('#9a9aa0'),
+  water: new THREE.Color('#9bb8b4'),
+  reflection: new THREE.Color('#4a6a68'),
 } as const;
 
 function distToSegment(
@@ -54,8 +56,12 @@ export function createIsland(pathWorld: Array<{ x: number; z: number }>): THREE.
       minPathDist = Math.min(minPathDist, distToSegment(x, z, a.x, a.z, b.x, b.z));
     }
 
-    if (h < 0.5) {
-      color.copy(PALETTE.sand); // 边缘沙岸
+    if (h < -0.35) {
+      color.copy(PALETTE.sand).lerp(PALETTE.water, 0.55); // 水下暗沙
+    } else if (h < 0.35) {
+      color.copy(PALETTE.sand); // 岸线沙滩
+    } else if (h < 1.6) {
+      color.copy(PALETTE.rock); // 灰色悬崖岩壁
     } else if (minPathDist < 1.4) {
       color.copy(PALETTE.path); // 路径带
     } else {
@@ -80,16 +86,30 @@ export function createIsland(pathWorld: Array<{ x: number; z: number }>): THREE.
   return new THREE.Mesh(geo, mat);
 }
 
-/** 水面：大平面，柔和蓝色。 */
+/** 水面：大平面，柔和灰蓝色。 */
 export function createWater(): THREE.Mesh {
   const geo = new THREE.PlaneGeometry(300, 300);
   geo.rotateX(-Math.PI / 2);
   const mat = new THREE.MeshStandardMaterial({
     color: PALETTE.water,
-    roughness: 0.6,
+    roughness: 0.55,
     metalness: 0,
   });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.position.y = -0.8;
+  return mesh;
+}
+
+/** 岛屿在水面的柔和倒影（Bad North 标志性处理）：深色半透剪影，向阳面偏移。 */
+export function createReflection(island: THREE.Mesh): THREE.Mesh {
+  const mat = new THREE.MeshBasicMaterial({
+    color: PALETTE.reflection,
+    transparent: true,
+    opacity: 0.32,
+    depthWrite: false,
+  });
+  const mesh = new THREE.Mesh(island.geometry, mat);
+  mesh.position.set(1.6, -0.78, 2.6);
+  mesh.scale.set(1.05, 1, 1.05);
   return mesh;
 }

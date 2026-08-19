@@ -1,8 +1,27 @@
 import * as THREE from 'three';
 import { Tweens } from './Tween';
-import { createIsland, createWater } from './terrain';
+import { createIsland, createReflection, createWater } from './terrain';
+import { islandHeight, toWorld } from './coords';
+import { makeBush, mulberry32 } from './models';
+import { TOWER_SPOTS } from '../data/level';
 
 export type FrameCallback = (dtMs: number) => void;
+
+function distToSeg(
+  px: number,
+  pz: number,
+  x1: number,
+  z1: number,
+  x2: number,
+  z2: number,
+): number {
+  const dx = x2 - x1;
+  const dz = z2 - z1;
+  const lenSq = dx * dx + dz * dz;
+  let t = lenSq === 0 ? 0 : ((px - x1) * dx + (pz - z1) * dz) / lenSq;
+  t = Math.min(1, Math.max(0, t));
+  return Math.hypot(px - (x1 + t * dx), pz - (z1 + t * dz));
+}
 
 /**
  * IslandScene：renderer、柔和光照、固定斜俯视相机、渲染循环。
@@ -23,7 +42,7 @@ export class IslandScene {
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color('#a8d8f0'); // 天空色
+    this.scene.background = new THREE.Color('#aec6c2'); // 灰蓝天水一色
 
     // 固定斜俯视相机（微缩模型观感，FOV 小 + 远距离）
     this.camera = new THREE.PerspectiveCamera(
@@ -32,19 +51,51 @@ export class IslandScene {
       0.1,
       300,
     );
-    this.camera.position.set(0, 44, 42);
+    this.camera.position.set(0, 46, 44);
     this.camera.lookAt(0, 1, 0);
 
-    // 柔和光照：半球光 + 单一暖色平行光，无阴影贴图
-    const hemi = new THREE.HemisphereLight(0xbfe3ff, 0x8fc97a, 1.0);
-    const dir = new THREE.DirectionalLight(0xfff2dd, 1.2);
+    // 柔和光照：灰调半球光 + 低强度暖色平行光（阴天的柔光），无阴影贴图
+    const hemi = new THREE.HemisphereLight(0xd5dedd, 0xa8b39a, 1.1);
+    const dir = new THREE.DirectionalLight(0xfff4e0, 0.85);
     dir.position.set(20, 30, 10);
     this.scene.add(hemi, dir);
 
     this.scene.add(createWater());
-    this.scene.add(createIsland(pathWorld));
+    const island = createIsland(pathWorld);
+    this.scene.add(island);
+    this.scene.add(createReflection(island));
+    this.scatterBushes(pathWorld);
 
     window.addEventListener('resize', () => this.onResize(container));
+  }
+
+  /** 在平台上散布球状灌木（避开路径与塔位，确定性种子） */
+  private scatterBushes(pathWorld: Array<{ x: number; z: number }>): void {
+    const rand = mulberry32(20260819);
+    const spots = TOWER_SPOTS.map(([x, y]) => toWorld(x, y));
+    let placed = 0;
+    let guard = 0;
+    while (placed < 16 && guard++ < 400) {
+      const x = (rand() - 0.5) * 42;
+      const z = (rand() - 0.5) * 22;
+      const h = islandHeight(x, z);
+      if (h < 2.0) continue; // 只放在平台上
+      // 避开路径
+      let minPath = Number.MAX_VALUE;
+      for (let i = 0; i < pathWorld.length - 1; i++) {
+        const a = pathWorld[i];
+        const b = pathWorld[i + 1];
+        minPath = Math.min(minPath, distToSeg(x, z, a.x, a.z, b.x, b.z));
+      }
+      if (minPath < 2.4) continue;
+      // 避开塔位
+      if (spots.some((s) => Math.hypot(s.x - x, s.z - z) < 2.6)) continue;
+
+      const bush = makeBush(placed * 7919 + 13);
+      bush.position.set(x, h - 0.1, z);
+      this.scene.add(bush);
+      placed += 1;
+    }
   }
 
   private onResize(container: HTMLElement): void {

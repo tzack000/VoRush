@@ -157,6 +157,40 @@ export function makeSpotPickDisc(): THREE.Mesh {
   return m;
 }
 
+// ---------- 植被（Bad North 风球状灌木丛） ----------
+
+const BUSH_COLORS = [0xa8c686, 0x8fb36e, 0xc4cf8f, 0x9cba7d];
+
+/**
+ * 球状灌木丛：3~5 个二十面体球块簇在一起。
+ * seed 决定大小/配色/偏移，保证每次生成一致。
+ */
+export function makeBush(seed: number): THREE.Group {
+  const g = new THREE.Group();
+  const rand = mulberry32(seed);
+  const blobs = 3 + Math.floor(rand() * 3);
+  const color = BUSH_COLORS[Math.floor(rand() * BUSH_COLORS.length)];
+  for (let i = 0; i < blobs; i++) {
+    const r = 0.35 + rand() * 0.4;
+    const b = mesh(new THREE.IcosahedronGeometry(r, 0), color);
+    b.position.set((rand() - 0.5) * 0.9, r * 0.7 + rand() * 0.15, (rand() - 0.5) * 0.9);
+    g.add(b);
+  }
+  return g;
+}
+
+/** 确定性伪随机（mulberry32） */
+export function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 /** 血条：背景 + 前景两个 Sprite（面向固定相机） */
 export function makeHpBar(width = 1.0): { bg: THREE.Sprite; fg: THREE.Sprite } {
   const bg = new THREE.Sprite(

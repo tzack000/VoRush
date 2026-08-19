@@ -14,10 +14,18 @@ function smoothstep(a: number, b: number, x: number): number {
   return t * t * (3 - 2 * t);
 }
 
-/** 岛屿地形高度：中央平台 2.2，边缘椭圆缓落并沉入水下（水面 y=-0.8）。
- *  椭圆略大于路径出入点（x≈±23.3），保证敌人从沙滩走出而非水下。 */
+/** 岛屿地形高度：中央平台，边缘椭圆陡落成悬崖并沉入水下（水面 y=-0.8）。
+ *  轮廓带低频摆动避免完美椭圆；平台有轻微起伏增加手绘感。 */
 export function islandHeight(x: number, z: number): number {
-  const rn = Math.sqrt((x / 26) ** 2 + (z / 15.5) ** 2);
-  const t = smoothstep(0.8, 1.08, rn);
-  return 2.2 * (1 - t) - 1.6 * t;
+  const nx = x / 26;
+  const nz = z / 15.5;
+  const theta = Math.atan2(nz, nx);
+  // 轮廓摆动：更低频、更不规则的海岸线
+  const wobble = 1 + 0.06 * Math.sin(theta * 4 + 1.3) + 0.045 * Math.sin(theta * 9 + 0.5);
+  const rn = Math.sqrt(nx * nx + nz * nz) * wobble;
+  const t = smoothstep(0.84, 1.04, rn);
+  const base = 2.6 * (1 - t) - 1.7 * t;
+  // 平台起伏（悬崖区不叠加）
+  const bump = (1 - t) * 0.22 * Math.sin(x * 0.5 + 1.1) * Math.sin(z * 0.6 - 0.7);
+  return base + bump;
 }

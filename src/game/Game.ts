@@ -28,6 +28,46 @@ export class Game {
     );
     controller = new LevelController(island, picker, uiRoot);
 
+    // 调试面板（?debug=1）：FPS + 单局计时，供真机走查读数
+    if (new URLSearchParams(location.search).get('debug') === '1') {
+      this.setupDebugHud(island, uiRoot);
+    }
+
     island.start();
+  }
+
+  private setupDebugHud(island: IslandScene, uiRoot: HTMLElement): void {
+    const hud = el('div', { id: 'debug-hud', text: 'FPS --' });
+    uiRoot.append(hud);
+
+    let sessionStart: number | null = null;
+    let sessionEnd: number | null = null;
+    window.addEventListener('vorush-session-start', () => {
+      sessionStart = performance.now();
+      sessionEnd = null;
+    });
+    window.addEventListener('vorush-session-end', () => {
+      sessionEnd = performance.now();
+    });
+
+    let acc = 0;
+    let frames = 0;
+    let fps = 0;
+    island.onFrame((dtMs) => {
+      acc += dtMs;
+      frames += 1;
+      if (acc >= 500) {
+        fps = Math.round((frames * 1000) / acc);
+        acc = 0;
+        frames = 0;
+        let text = `FPS ${fps}`;
+        if (sessionStart !== null) {
+          const end = sessionEnd ?? performance.now();
+          const sec = Math.round((end - sessionStart) / 1000);
+          text += `\n单局 ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}${sessionEnd ? ' (完)' : ''}`;
+        }
+        hud.textContent = text;
+      }
+    });
   }
 }

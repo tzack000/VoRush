@@ -159,6 +159,7 @@ export class LevelController {
         unlockAudio();
         WordAudio.unlock();
         dim.remove();
+        window.dispatchEvent(new Event('vorush-session-start'));
         this.session.start();
       },
     });
@@ -662,6 +663,7 @@ export class LevelController {
     this.picker.enabled = false;
     this.crate?.destroy();
     this.crate = null;
+    window.dispatchEvent(new Event('vorush-session-end'));
     const stars = computeStars(true, this.book, LEVEL_WORD_IDS);
     this.book.save(BOOK_STORAGE_KEY);
     this.resultView.showVictory(stars, () => location.reload());
@@ -672,6 +674,7 @@ export class LevelController {
     this.picker.enabled = false;
     this.crate?.destroy();
     this.crate = null;
+    window.dispatchEvent(new Event('vorush-session-end'));
     this.book.save(BOOK_STORAGE_KEY); // 塔防失败不抹除学习记录
     this.resultView.showFail(() => location.reload());
   }

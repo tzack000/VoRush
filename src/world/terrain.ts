@@ -60,8 +60,8 @@ export function createIsland(pathWorld: Array<{ x: number; z: number }>): THREE.
       color.copy(PALETTE.sand).lerp(PALETTE.water, 0.55); // 水下暗沙
     } else if (h < 0.35) {
       color.copy(PALETTE.sand); // 岸线沙滩
-    } else if (h < 1.6) {
-      color.copy(PALETTE.rock); // 灰色悬崖岩壁
+    } else if (h < 3.1) {
+      color.copy(PALETTE.rock); // 灰色悬崖岩壁（全高）
     } else if (minPathDist < 1.4) {
       color.copy(PALETTE.path); // 路径带
     } else {

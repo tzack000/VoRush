@@ -410,7 +410,8 @@ export class LevelController {
       model = makeKnightCamp(1);
     }
 
-    // 3D 视图
+    // 3D 视图（岛屿加高后模型等比放大保持可读性）
+    model.scale.setScalar(1.6);
     const w = this.worldOf(x, y);
     model.position.copy(w);
     this.island.scene.add(model);
@@ -418,6 +419,7 @@ export class LevelController {
     if (tower instanceof KnightCamp) {
       const rallyW = this.worldOf(tower.fighter.x, tower.fighter.y);
       const knightGroup = makeKnight();
+      knightGroup.scale.setScalar(1.5);
       knightGroup.position.copy(rallyW);
       const { bg, fg } = makeHpBar(0.7);
       bg.position.y = 1.2;
@@ -472,6 +474,7 @@ export class LevelController {
               tower instanceof ArcherTower
                 ? makeArcherTower(tower.level + 1)
                 : makeKnightCamp(tower.level + 1);
+            upgraded.scale.setScalar(1.6);
             upgraded.position.copy(pos);
             this.island.scene.add(upgraded);
             view.group = upgraded;
@@ -479,7 +482,7 @@ export class LevelController {
             Tweens.add({
               duration: 250,
               ease: Ease.outBack,
-              onUpdate: (t) => upgraded.scale.setScalar(1.25 - t * 0.25),
+              onUpdate: (t) => upgraded.scale.setScalar(1.6 * (1.25 - t * 0.25)),
             });
           }
           sfx.build();
@@ -530,6 +533,7 @@ export class LevelController {
     this.crate = new SupplyCrate({
       onSpawn: (x2d, y2d) => {
         const group = makeCrate();
+        group.scale.setScalar(1.4);
         const w = this.worldOf(x2d, y2d);
         group.position.copy(w);
         this.island.scene.add(group);
@@ -582,6 +586,7 @@ export class LevelController {
 
     const group =
       id === 'wolf' ? makeWolf() : id === 'captain' ? makeCaptain() : makeGoblin();
+    group.scale.setScalar(1.5);
     const w = this.worldOf(enemy.x, enemy.z);
     group.position.copy(w);
     const hpWidth = id === 'captain' ? 1.4 : 1.0;

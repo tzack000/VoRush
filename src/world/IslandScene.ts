@@ -46,13 +46,14 @@ export class IslandScene {
 
     // 固定斜俯视相机（微缩模型观感，FOV 小 + 远距离）
     this.camera = new THREE.PerspectiveCamera(
-      30,
+      32,
       container.clientWidth / container.clientHeight,
       0.1,
       300,
     );
-    this.camera.position.set(0, 46, 44);
-    this.camera.lookAt(0, 1, 0);
+    // 低角度斜俯视：露出悬崖立面与植被/塔的高度，强化 3D 微缩感
+    this.camera.position.set(0, 30, 56);
+    this.camera.lookAt(0, 2.4, -1);
 
     // 柔和光照：灰调半球光 + 低强度暖色平行光（阴天的柔光），无阴影贴图
     const hemi = new THREE.HemisphereLight(0xd5dedd, 0xa8b39a, 1.1);
@@ -79,7 +80,7 @@ export class IslandScene {
       const x = (rand() - 0.5) * 42;
       const z = (rand() - 0.5) * 22;
       const h = islandHeight(x, z);
-      if (h < 2.0) continue; // 只放在平台上
+      if (h < 3.2) continue; // 只放在平台上
       // 避开路径
       let minPath = Number.MAX_VALUE;
       for (let i = 0; i < pathWorld.length - 1; i++) {
@@ -89,9 +90,10 @@ export class IslandScene {
       }
       if (minPath < 2.4) continue;
       // 避开塔位
-      if (spots.some((s) => Math.hypot(s.x - x, s.z - z) < 2.6)) continue;
+      if (spots.some((s) => Math.hypot(s.x - x, s.z - z) < 3.2)) continue;
 
       const bush = makeBush(placed * 7919 + 13);
+      bush.scale.setScalar(1.5);
       bush.position.set(x, h - 0.1, z);
       this.scene.add(bush);
       placed += 1;

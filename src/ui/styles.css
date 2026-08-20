@@ -394,6 +394,18 @@ body {
   color: #c9bfa8;
 }
 
+.pack-card .pack-index {
+  font-size: 20px;
+  font-weight: bold;
+  color: #8b5a2b;
+}
+
+.pack-card.locked {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: grayscale(0.6);
+}
+
 .star-row {
   display: flex;
   align-items: center;

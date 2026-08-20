@@ -9,7 +9,8 @@ import { ECONOMY } from '../data/economy';
 import { PATH_POINTS, TOWER_SPOTS } from '../data/level';
 import { ARCHER_TOWER, KNIGHT_CAMP, type TowerDefBase } from '../data/towers';
 import { ENEMY_DEFS, EXIT_LIVES, WAVES, type EnemyDef } from '../data/waves';
-import type { WordPack } from '../data/words';
+import { getPack, type WordPack } from '../data/words';
+import { scaleEnemy, scaleWaves, type LevelDef } from '../data/levels';
 import { GoldWallet } from '../economy/GoldWallet';
 import { SupplyCrate } from '../events/SupplyCrate';
 import { pickPracticeWords, pickTypeFor } from '../learning/QuestionSelector';
@@ -99,18 +100,20 @@ export class LevelController {
   private buildBar: HTMLElement | null = null;
   private phaseButton: HTMLButtonElement | null = null;
   private buildPopup: BuildPopup;
+  private pack: WordPack;
   private tutorialStep = 0;
 
   constructor(
     private island: IslandScene,
     private picker: RaycastPicker,
     private uiRoot: HTMLElement,
-    private pack: WordPack,
+    private level: LevelDef,
     private hooks: { onReplay: () => void; onExit: () => void },
   ) {
+    this.pack = getPack(level.packId);
     // 动物包旧键一次性迁移
-    if (pack.id === 'animals-1') WordBook.migrate(LEGACY_BOOK_KEY, bookKey(pack.id));
-    this.book = WordBook.load(bookKey(pack.id), this.wordIds);
+    if (this.pack.id === 'animals-1') WordBook.migrate(LEGACY_BOOK_KEY, bookKey(this.pack.id));
+    this.book = WordBook.load(bookKey(this.pack.id), this.wordIds);
     this.path = new Path(PATH_POINTS.map(([x, y]) => ({ x, z: y })));
     this.hud = new Hud(uiRoot);
     this.quiz = new QuizOverlay(uiRoot);
@@ -502,7 +505,7 @@ export class LevelController {
 
   private enterCombat(wave: number): void {
     this.refreshHud(`第 ${wave}/3 波 ⚔️`);
-    this.spawner = new WaveSpawner(WAVES[wave - 1]);
+    this.spawner = new WaveSpawner(scaleWaves(WAVES, this.level.scale)[wave - 1]);
     this.crate = new SupplyCrate({
       onSpawn: (x2d, y2d) => {
         const group = makeCrate();
@@ -554,7 +557,7 @@ export class LevelController {
 
   private spawnEnemy(id: EnemyDef['id']): void {
     const start = this.path.pointAt(0);
-    const enemy = new Enemy(ENEMY_DEFS[id], start.x, start.z);
+    const enemy = new Enemy(scaleEnemy(ENEMY_DEFS[id], this.level.scale), start.x, start.z);
     this.enemies.push(enemy);
 
     const group =

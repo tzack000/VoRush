@@ -1,6 +1,6 @@
 import { unlockAudio } from '../audio/sfx';
 import { PATH_POINTS, TOWER_SPOTS } from '../data/level';
-import type { WordPack } from '../data/words';
+import type { LevelDef } from '../data/levels';
 import { WordAudio } from '../quiz/WordAudio';
 import { el, makeButton } from '../ui/dom';
 import { PackSelectView } from '../ui/PackSelectView';
@@ -37,9 +37,9 @@ export class Game {
       this.controller?.onPick(id),
     );
 
-    this.packSelect = new PackSelectView(uiRoot, (pack) => {
+    this.packSelect = new PackSelectView(uiRoot, (level) => {
       this.packSelect.hide();
-      this.startLevel(island, picker, uiRoot, pack);
+      this.startLevel(island, picker, uiRoot, level);
     });
 
     // 测试辅助：暴露塔位屏幕坐标（自动化冒烟用）
@@ -88,11 +88,11 @@ export class Game {
     island: IslandScene,
     picker: RaycastPicker,
     uiRoot: HTMLElement,
-    pack: WordPack,
+    level: LevelDef,
   ): void {
     this.controller?.dispose();
-    this.controller = new LevelController(island, picker, uiRoot, pack, {
-      onReplay: () => this.startLevel(island, picker, uiRoot, pack),
+    this.controller = new LevelController(island, picker, uiRoot, level, {
+      onReplay: () => this.startLevel(island, picker, uiRoot, level),
       onExit: () => {
         this.controller?.dispose();
         this.controller = null;

@@ -1,4 +1,3 @@
-import { getWord } from '../data/words';
 import { sfx } from '../audio/sfx';
 import type { AnswerOutcome } from '../learning/WordBook';
 import type { QuizQuestion } from './questionGenerator';
@@ -64,13 +63,13 @@ export class QuizOverlay {
       const speaker = makeButton({
         label: '🔊',
         className: 'btn-orange',
-        onClick: () => WordAudio.play(getWord(q.wordId)),
+        onClick: () => WordAudio.play(q.word),
       });
       panel.append(speaker);
-      WordAudio.play(getWord(q.wordId)); // 自动播放一遍
+      WordAudio.play(q.word); // 自动播放一遍
     } else {
       panel.append(el('div', { className: 'quiz-hint', text: '看图，点一点正确的单词' }));
-      panel.append(el('div', { className: 'quiz-emoji', text: q.promptEmoji }));
+      panel.append(el('div', { className: 'quiz-emoji', text: q.word.emoji }));
     }
 
     const feedback = el('div', { className: 'quiz-feedback', text: '' });

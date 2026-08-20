@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { unlockAudio, sfx } from '../audio/sfx';
+import { sfx } from '../audio/sfx';
 import { ArcherTower } from '../combat/ArcherTower';
 import { Enemy } from '../combat/Enemy';
 import { KnightCamp } from '../combat/KnightCamp';
@@ -9,7 +9,7 @@ import { ECONOMY } from '../data/economy';
 import { PATH_POINTS, TOWER_SPOTS } from '../data/level';
 import { ARCHER_TOWER, KNIGHT_CAMP, type TowerDefBase } from '../data/towers';
 import { ENEMY_DEFS, EXIT_LIVES, WAVES, type EnemyDef } from '../data/waves';
-import { LEVEL_WORDS, LEVEL_WORD_IDS, getWord } from '../data/words';
+import type { WordPack } from '../data/words';
 import { GoldWallet } from '../economy/GoldWallet';
 import { SupplyCrate } from '../events/SupplyCrate';
 import { pickPracticeWords, pickTypeFor } from '../learning/QuestionSelector';
@@ -42,7 +42,15 @@ import {
 import type { RaycastPicker } from '../world/RaycastPicker';
 import { Tweens, Ease } from '../world/Tween';
 
-const BOOK_STORAGE_KEY = 'vorush.level1-1.records';
+const LEGACY_BOOK_KEY = 'vorush.level1-1.records';
+
+function bookKey(packId: string): string {
+  return `vorush.records.${packId}`;
+}
+
+function clearKey(packId: string): string {
+  return `vorush.clear.${packId}`;
+}
 
 type Tower = ArcherTower | KnightCamp;
 
@@ -98,8 +106,12 @@ export class LevelController {
     private island: IslandScene,
     private picker: RaycastPicker,
     private uiRoot: HTMLElement,
+    private pack: WordPack,
+    private hooks: { onReplay: () => void; onExit: () => void },
   ) {
-    this.book = WordBook.load(BOOK_STORAGE_KEY, LEVEL_WORD_IDS);
+    // 动物包旧键一次性迁移
+    if (pack.id === 'animals-1') WordBook.migrate(LEGACY_BOOK_KEY, bookKey(pack.id));
+    this.book = WordBook.load(bookKey(pack.id), this.wordIds);
     this.path = new Path(PATH_POINTS.map(([x, y]) => ({ x, z: y })));
     this.hud = new Hud(uiRoot);
     this.quiz = new QuizOverlay(uiRoot);
@@ -112,7 +124,14 @@ export class LevelController {
     this.createSpotRings();
     this.refreshHud('');
     island.onFrame((dt) => this.update(dt));
-    this.showStartOverlay();
+  }
+
+  private get wordIds(): string[] {
+    return this.pack.words.map((w) => w.id);
+  }
+
+  private saveBook(): void {
+    this.book.save(bookKey(this.pack.id));
   }
 
   // ---------- 工具 ----------
@@ -148,29 +167,39 @@ export class LevelController {
     return '';
   }
 
-  // ---------- 开始界面 ----------
+  /** 开始单局（词包选择后由 Game 调用） */
+  begin(): void {
+    window.dispatchEvent(new Event('vorush-session-start'));
+    this.session.start();
+  }
 
-  private showStartOverlay(): void {
-    const start = makeButton({
-      label: '开始 ▶',
-      className: 'btn-green',
-      onClick: () => {
-        // 首次用户手势内解锁音频（iOS 限制）
-        unlockAudio();
-        WordAudio.unlock();
-        dim.remove();
-        window.dispatchEvent(new Event('vorush-session-start'));
-        this.session.start();
-      },
-    });
-    const dim = el('div', { className: 'modal-dim' }, [
-      el('div', { className: 'modal-panel' }, [
-        el('div', { className: 'modal-title', text: 'VoRush' }),
-        el('div', { text: '1-1 草原哨站 · 动物伙伴' }),
-        start,
-      ]),
-    ]);
-    this.uiRoot.append(dim);
+  /** 销毁：清理 3D 实体、补间与 DOM，供返回词包选择/重玩 */
+  dispose(): void {
+    this.crate?.destroy();
+    this.crate = null;
+    for (const enemy of this.enemies) {
+      const view = this.enemyViews.get(enemy);
+      if (view) this.island.scene.remove(view.group);
+    }
+    this.enemies = [];
+    this.enemyViews.clear();
+    for (const view of this.towerViews.values()) {
+      this.island.scene.remove(view.group);
+      if (view.knight) this.island.scene.remove(view.knight.group);
+    }
+    this.towerViews.clear();
+    this.towers = [];
+    for (const ring of this.spotRings) this.island.scene.remove(ring);
+    for (const disc of this.spotDiscs) this.island.scene.remove(disc);
+    this.spotRings = [];
+    this.spotDiscs = [];
+    this.picker.clear();
+    Tweens.killAll();
+    this.quiz.close();
+    this.tutorial.clear();
+    this.closeBuildMenu();
+    this.buildBar?.remove();
+    this.hud.root.remove();
   }
 
   // ---------- 单局状态 ----------
@@ -206,17 +235,17 @@ export class LevelController {
 
     const showWord = () => {
       dim.innerHTML = '';
-      if (index >= LEVEL_WORDS.length) {
+      if (index >= this.pack.words.length) {
         dim.remove();
-        this.book.save(BOOK_STORAGE_KEY);
+        this.saveBook();
         this.session.advance();
         return;
       }
-      const word = LEVEL_WORDS[index];
+      const word = this.pack.words[index];
       this.book.markTaught(word.id);
 
       const next = makeButton({
-        label: index === LEVEL_WORDS.length - 1 ? '去布防 ▶' : '下一个 ▶',
+        label: index === this.pack.words.length - 1 ? '去布防 ▶' : '下一个 ▶',
         className: 'btn-green',
         onClick: () => {
           index += 1;
@@ -227,7 +256,7 @@ export class LevelController {
         el('div', { className: 'modal-panel' }, [
           el('div', {
             className: 'quiz-progress',
-            text: `新单词 ${index + 1} / ${LEVEL_WORDS.length}`,
+            text: `新单词 ${index + 1} / ${this.pack.words.length}`,
           }),
           el('div', { className: 'quiz-emoji', text: word.emoji }),
           el('div', { className: 'quiz-hint', text: word.text }),
@@ -506,16 +535,18 @@ export class LevelController {
 
     const wordIds = pickPracticeWords(
       this.book,
-      LEVEL_WORD_IDS,
+      this.wordIds,
       ECONOMY.practiceQuestionsPerRound,
     );
-    const questions = wordIds.map((id) => generateQuestion(id, pickTypeFor(this.book, id)));
+    const questions = wordIds.map((id) =>
+      generateQuestion(id, pickTypeFor(this.book, id), this.pack.words),
+    );
 
     this.quiz.runQuiz(questions, {
       onOutcome: (q, outcome) => {
         this.book.recordAnswer(q.wordId, q.type, outcome);
         this.wallet.rewardFor(outcome);
-        this.book.save(BOOK_STORAGE_KEY);
+        this.saveBook();
         sfx.coin();
         this.refreshHud();
       },
@@ -558,16 +589,16 @@ export class LevelController {
   private openCrateQuiz(): void {
     this.combatPaused = true;
     this.picker.enabled = false;
-    const taught = LEVEL_WORD_IDS.filter((id) => this.book.isTaught(id));
-    const pool = taught.length > 0 ? taught : LEVEL_WORD_IDS;
+    const taught = this.wordIds.filter((id) => this.book.isTaught(id));
+    const pool = taught.length > 0 ? taught : this.wordIds;
     const wordId = pool[Math.floor(Math.random() * pool.length)];
-    const question = generateQuestion(wordId, pickTypeFor(this.book, wordId));
+    const question = generateQuestion(wordId, pickTypeFor(this.book, wordId), this.pack.words);
 
     this.quiz.runQuiz([question], {
       onOutcome: (q, outcome) => {
         this.book.recordAnswer(q.wordId, q.type, outcome);
         this.wallet.supplyCrateReward();
-        this.book.save(BOOK_STORAGE_KEY);
+        this.saveBook();
         sfx.coin();
         this.refreshHud();
       },
@@ -664,9 +695,19 @@ export class LevelController {
     this.crate?.destroy();
     this.crate = null;
     window.dispatchEvent(new Event('vorush-session-end'));
-    const stars = computeStars(true, this.book, LEVEL_WORD_IDS);
-    this.book.save(BOOK_STORAGE_KEY);
-    this.resultView.showVictory(stars, () => location.reload());
+    const stars = computeStars(true, this.book, this.wordIds);
+    this.saveBook();
+    // 通关标记：词包选择界面展示星星
+    try {
+      globalThis.localStorage?.setItem(clearKey(this.pack.id), JSON.stringify(stars));
+    } catch {
+      // 忽略
+    }
+    this.resultView.showVictory(
+      stars,
+      () => this.hooks.onReplay(),
+      () => this.hooks.onExit(),
+    );
   }
 
   private enterFail(): void {
@@ -675,8 +716,11 @@ export class LevelController {
     this.crate?.destroy();
     this.crate = null;
     window.dispatchEvent(new Event('vorush-session-end'));
-    this.book.save(BOOK_STORAGE_KEY); // 塔防失败不抹除学习记录
-    this.resultView.showFail(() => location.reload());
+    this.saveBook(); // 塔防失败不抹除学习记录
+    this.resultView.showFail(
+      () => this.hooks.onReplay(),
+      () => this.hooks.onExit(),
+    );
   }
 
   // ---------- 帧循环 ----------

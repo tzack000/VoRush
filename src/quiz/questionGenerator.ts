@@ -1,4 +1,4 @@
-import { getWord, LEVEL_WORDS, type WordDef } from '../data/words';
+import type { WordDef } from '../data/words';
 import type { QuestionType } from '../learning/WordBook';
 
 export interface QuizOption {
@@ -11,8 +11,8 @@ export interface QuizOption {
 export interface QuizQuestion {
   wordId: string;
   type: QuestionType;
-  /** 听音选图：播放发音；看图选词：展示 promptEmoji */
-  promptEmoji: string;
+  /** 正确词（音频播放与 emoji 题面直接使用，无需再查表） */
+  word: WordDef;
   options: QuizOption[];
 }
 
@@ -26,28 +26,30 @@ function shuffled<T>(arr: T[], rng: () => number): T[] {
 }
 
 /**
- * 生成一道题：1 个正确项 + 3 个干扰项（取自本关其余词），
+ * 生成一道题：1 个正确项 + 3 个干扰项（取自当前词包内其余词），
  * 一屏最多 4 个答案。
  */
 export function generateQuestion(
   wordId: string,
   type: QuestionType,
+  packWords: WordDef[],
   rng: () => number = Math.random,
 ): QuizQuestion {
-  const word = getWord(wordId);
+  const word = packWords.find((x) => x.id === wordId);
+  if (!word) throw new Error(`unknown word: ${wordId}`);
   const distractors = shuffled(
-    LEVEL_WORDS.filter((w: WordDef) => w.id !== wordId),
+    packWords.filter((x) => x.id !== wordId),
     rng,
   ).slice(0, 3);
 
   const options = shuffled(
-    [word, ...distractors].map((w) => ({
-      wordId: w.id,
-      label: type === 'listen-pick-image' ? w.emoji : w.text,
-      isCorrect: w.id === wordId,
+    [word, ...distractors].map((x) => ({
+      wordId: x.id,
+      label: type === 'listen-pick-image' ? x.emoji : x.text,
+      isCorrect: x.id === wordId,
     })),
     rng,
   );
 
-  return { wordId, type, promptEmoji: word.emoji, options };
+  return { wordId, type, word, options };
 }

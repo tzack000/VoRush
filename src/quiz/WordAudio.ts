@@ -1,5 +1,5 @@
 import type { WordDef } from '../data/words';
-import { LEVEL_WORDS } from '../data/words';
+import { WORD_PACKS } from '../data/words';
 
 /**
  * 单词发音播放：预录 m4a 经 HTMLAudioElement 播放。
@@ -8,13 +8,17 @@ import { LEVEL_WORDS } from '../data/words';
 export class WordAudio {
   private static players = new Map<string, HTMLAudioElement>();
 
-  /** 预加载全部单词音频（Game 启动时调用一次） */
+  /** 预加载全部词库音频（Game 启动时调用一次） */
   static init(): void {
     if (this.players.size > 0) return;
-    for (const w of LEVEL_WORDS) {
-      const audio = new Audio(`assets/audio/words/${w.id}.m4a`);
+    const ids = new Set<string>();
+    for (const pack of WORD_PACKS) {
+      for (const w of pack.words) ids.add(w.id);
+    }
+    for (const id of ids) {
+      const audio = new Audio(`assets/audio/words/${id}.m4a`);
       audio.preload = 'auto';
-      this.players.set(w.id, audio);
+      this.players.set(id, audio);
     }
   }
 

@@ -5,7 +5,7 @@ import { el, makeButton } from './dom';
 export class StarResultView {
   constructor(private uiRoot: HTMLElement) {}
 
-  showVictory(stars: StarResult, onReplay: () => void): void {
+  showVictory(stars: StarResult, onReplay: () => void, onExit: () => void): void {
     const rows: Array<[boolean, string]> = [
       [stars.clear, '通关星：守住了关卡'],
       [stars.know, '认识星：新词都答对过'],
@@ -19,16 +19,22 @@ export class StarResultView {
           el('span', { text: label }),
         ]),
       ),
-      makeButton({ label: '再玩一次', className: 'btn-green', onClick: onReplay }),
+      el('div', { className: 'result-buttons' }, [
+        makeButton({ label: '再玩一次', className: 'btn-green', onClick: onReplay }),
+        makeButton({ label: '选词包', onClick: onExit }),
+      ]),
     ]);
     this.uiRoot.append(el('div', { className: 'modal-dim' }, [panel]));
   }
 
-  showFail(onRetry: () => void): void {
+  showFail(onRetry: () => void, onExit: () => void): void {
     const panel = el('div', { className: 'modal-panel' }, [
       el('div', { className: 'modal-title', text: '怪物跑进去了几只' }),
       el('div', { text: '学过的单词都还在，再试一次吧！' }),
-      makeButton({ label: '再试一次', className: 'btn-green', onClick: onRetry }),
+      el('div', { className: 'result-buttons' }, [
+        makeButton({ label: '再试一次', className: 'btn-green', onClick: onRetry }),
+        makeButton({ label: '选词包', onClick: onExit }),
+      ]),
     ]);
     this.uiRoot.append(el('div', { className: 'modal-dim' }, [panel]));
   }

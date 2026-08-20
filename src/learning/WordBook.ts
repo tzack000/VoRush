@@ -70,6 +70,18 @@ export class WordBook {
     }
   }
 
+  /** 旧键一次性迁移到新键（新键已存在或旧键不存在时不动作） */
+  static migrate(oldKey: string, newKey: string): void {
+    const raw = storageGet(oldKey);
+    if (raw === null) return;
+    if (storageGet(newKey) === null) storageSet(newKey, raw);
+    try {
+      globalThis.localStorage?.removeItem(oldKey);
+    } catch {
+      // 忽略
+    }
+  }
+
   save(storageKey: string): void {
     storageSet(storageKey, JSON.stringify(this.data));
   }

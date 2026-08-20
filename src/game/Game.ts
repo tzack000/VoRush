@@ -1,13 +1,23 @@
+import { unlockAudio } from '../audio/sfx';
 import { PATH_POINTS } from '../data/level';
+import type { WordPack } from '../data/words';
 import { WordAudio } from '../quiz/WordAudio';
-import { el } from '../ui/dom';
+import { el, makeButton } from '../ui/dom';
+import { PackSelectView } from '../ui/PackSelectView';
 import { toWorld } from '../world/coords';
 import { IslandScene } from '../world/IslandScene';
 import { RaycastPicker } from '../world/RaycastPicker';
 import { LevelController } from './LevelController';
 
-/** Game：组装渲染层（IslandScene）、拾取层（RaycastPicker）与单局编排（LevelController）。 */
+/**
+ * Game：组装渲染层、拾取层与流程编排。
+ * 流程：开始界面（解锁音频）→ 词包选择 → LevelController(pack)
+ * → 结算后重玩本包或返回词包选择。
+ */
 export class Game {
+  private controller: LevelController | null = null;
+  private packSelect: PackSelectView;
+
   constructor(container: HTMLElement) {
     // DOM UI 覆盖层
     const uiRoot = el('div', { id: 'ui' });
@@ -22,11 +32,16 @@ export class Game {
     WordAudio.init();
 
     // 拾取 → 控制器
-    let controller: LevelController;
     const picker = new RaycastPicker(island.camera, island.renderer.domElement, (id) =>
-      controller.onPick(id),
+      this.controller?.onPick(id),
     );
-    controller = new LevelController(island, picker, uiRoot);
+
+    this.packSelect = new PackSelectView(uiRoot, (pack) => {
+      this.packSelect.hide();
+      this.startLevel(island, picker, uiRoot, pack);
+    });
+
+    this.showStartOverlay(uiRoot, () => this.packSelect.show());
 
     // 调试面板（?debug=1）：FPS + 单局计时，供真机走查读数
     if (new URLSearchParams(location.search).get('debug') === '1') {
@@ -34,6 +49,46 @@ export class Game {
     }
 
     island.start();
+  }
+
+  private showStartOverlay(uiRoot: HTMLElement, onStart: () => void): void {
+    const start = makeButton({
+      label: '开始 ▶',
+      className: 'btn-green',
+      onClick: () => {
+        // 首次用户手势内解锁音频（iOS 限制）
+        unlockAudio();
+        WordAudio.unlock();
+        dim.remove();
+        onStart();
+      },
+    });
+    const dim = el('div', { className: 'modal-dim' }, [
+      el('div', { className: 'modal-panel' }, [
+        el('div', { className: 'modal-title', text: 'VoRush' }),
+        el('div', { text: '英语单词塔防' }),
+        start,
+      ]),
+    ]);
+    uiRoot.append(dim);
+  }
+
+  private startLevel(
+    island: IslandScene,
+    picker: RaycastPicker,
+    uiRoot: HTMLElement,
+    pack: WordPack,
+  ): void {
+    this.controller?.dispose();
+    this.controller = new LevelController(island, picker, uiRoot, pack, {
+      onReplay: () => this.startLevel(island, picker, uiRoot, pack),
+      onExit: () => {
+        this.controller?.dispose();
+        this.controller = null;
+        this.packSelect.show();
+      },
+    });
+    this.controller.begin();
   }
 
   private setupDebugHud(island: IslandScene, uiRoot: HTMLElement): void {

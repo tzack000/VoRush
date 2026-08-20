@@ -19,6 +19,7 @@ import { generateQuestion } from '../quiz/questionGenerator';
 import { QuizOverlay } from '../quiz/QuizOverlay';
 import { WordAudio } from '../quiz/WordAudio';
 import { SessionStateMachine, type SessionState } from '../session/SessionStateMachine';
+import { BuildPopup } from '../ui/BuildPopup';
 import { el, makeButton } from '../ui/dom';
 import { Hud } from '../ui/Hud';
 import { StarResultView } from '../ui/StarResultView';
@@ -35,7 +36,7 @@ import {
   makeKnight,
   makeKnightCamp,
   makeSpotPickDisc,
-  makeSpotRing,
+  makeFlag,
   makeWolf,
   setHpBarRatio,
 } from '../world/models';
@@ -88,7 +89,7 @@ export class LevelController {
 
   private enemyViews = new Map<Enemy, EnemyView>();
   private towerViews = new Map<Tower, TowerView>();
-  private spotRings: THREE.Mesh[] = [];
+  private spotFlags: Array<{ group: THREE.Group; flagMesh: THREE.Mesh }> = [];
   private spotDiscs: THREE.Mesh[] = [];
 
   private hud: Hud;
@@ -96,10 +97,8 @@ export class LevelController {
   private resultView: StarResultView;
   private tutorial: TutorialOverlay;
   private buildBar: HTMLElement | null = null;
-  private buildMenu: HTMLElement | null = null;
   private phaseButton: HTMLButtonElement | null = null;
-  private buildButton: HTMLButtonElement | null = null;
-  private selectedTowerDef: TowerDefBase | null = null;
+  private buildPopup: BuildPopup;
   private tutorialStep = 0;
 
   constructor(
@@ -117,11 +116,12 @@ export class LevelController {
     this.quiz = new QuizOverlay(uiRoot);
     this.resultView = new StarResultView(uiRoot);
     this.tutorial = new TutorialOverlay(uiRoot);
+    this.buildPopup = new BuildPopup(uiRoot);
     this.session = new SessionStateMachine(ECONOMY.waveCount, {
       onEnter: (s) => this.onEnterState(s),
     });
 
-    this.createSpotRings();
+    this.createSpotFlags();
     this.refreshHud('');
     island.onFrame((dt) => this.update(dt));
   }
@@ -189,15 +189,15 @@ export class LevelController {
     }
     this.towerViews.clear();
     this.towers = [];
-    for (const ring of this.spotRings) this.island.scene.remove(ring);
+    for (const flag of this.spotFlags) this.island.scene.remove(flag.group);
     for (const disc of this.spotDiscs) this.island.scene.remove(disc);
-    this.spotRings = [];
+    this.spotFlags = [];
     this.spotDiscs = [];
     this.picker.clear();
     Tweens.killAll();
     this.quiz.close();
     this.tutorial.clear();
-    this.closeBuildMenu();
+    this.buildPopup.close();
     this.buildBar?.remove();
     this.hud.root.remove();
   }
@@ -277,14 +277,15 @@ export class LevelController {
 
   // ---------- 布防 ----------
 
-  private createSpotRings(): void {
+  private createSpotFlags(): void {
     TOWER_SPOTS.forEach(([x, y], i) => {
-      const ring = makeSpotRing();
+      // Kingdom Rush 式塔位：一面旗帜
+      const flag = makeFlag();
       const w = this.worldOf(x, y);
-      ring.position.set(w.x, w.y + 0.06, w.z);
-      this.island.scene.add(ring);
-      this.spotRings.push(ring);
-      // 拾取用不可见圆盘（圆环中空，Raycast 无法稳定命中）
+      flag.group.position.copy(w);
+      this.island.scene.add(flag.group);
+      this.spotFlags.push(flag);
+      // 拾取用不可见圆盘
       const disc = makeSpotPickDisc();
       disc.position.set(w.x, w.y + 0.06, w.z);
       this.island.scene.add(disc);
@@ -303,17 +304,15 @@ export class LevelController {
       className: 'btn-green',
       onClick: () => this.leaveBuild(),
     });
-    this.buildButton = makeButton({
-      label: '建造 🔨',
-      onClick: () => this.toggleBuildMenu(),
-    });
-    this.buildBar = el('div', { id: 'build-bar' }, [this.phaseButton, this.buildButton]);
+    this.buildBar = el('div', { id: 'build-bar' }, [this.phaseButton]);
     this.uiRoot.append(this.buildBar);
 
     // 首次教学：每次只教一个操作
     if (wave === 0 && TutorialOverlay.shouldShow() && this.tutorialStep === 0) {
       this.tutorialStep = 1;
-      this.tutorial.pointToElement(this.buildButton, '点这里建造防御塔');
+      const [sx, sy] = TOWER_SPOTS[0];
+      const screen = this.island.projectToScreen(this.worldOf(sx, sy));
+      this.tutorial.pointTo(screen.x, screen.y, '点旗子建塔');
     }
   }
 
@@ -322,84 +321,10 @@ export class LevelController {
       this.tutorialStep = 0;
       this.tutorial.finish();
     }
-    this.closeBuildMenu();
-    this.selectedTowerDef = null;
+    this.buildPopup.close();
     this.buildBar?.remove();
     this.buildBar = null;
     this.session.advance();
-  }
-
-  private toggleBuildMenu(): void {
-    if (this.buildMenu) {
-      this.closeBuildMenu();
-      return;
-    }
-    this.buildMenu = el('div', { className: 'build-menu' });
-
-    for (const def of [ARCHER_TOWER, KNIGHT_CAMP] as const) {
-      const card = el('div', { className: 'tower-card' }, [
-        el('span', { className: 'card-emoji', text: def.emoji }),
-        el('div', {}, [
-          el('div', { className: 'card-name', text: def.name }),
-          el('div', { className: 'card-hint', text: def.hint }),
-          el('div', {
-            className: `card-price ${this.wallet.canAfford(def.price) ? '' : 'cant-afford'}`,
-            text: `💰 ${def.price}`,
-          }),
-        ]),
-      ]);
-      card.addEventListener('pointerdown', (e) => {
-        e.preventDefault();
-        this.selectedTowerDef = def;
-        this.closeBuildMenu();
-        this.pulseFreeSpots();
-        if (this.tutorialStep === 2) {
-          this.tutorialStep = 3;
-          const idx = this.firstFreeSpotIndex();
-          const [sx, sy] = TOWER_SPOTS[idx];
-          const w = this.worldOf(sx, sy);
-          const screen = this.island.projectToScreen(w);
-          this.tutorial.pointTo(screen.x, screen.y, '点光圈放下防御塔');
-        }
-      });
-      this.buildMenu.append(card);
-    }
-    this.uiRoot.append(this.buildMenu);
-
-    if (this.tutorialStep === 1 && this.buildMenu.firstElementChild) {
-      this.tutorialStep = 2;
-      this.tutorial.pointToElement(
-        this.buildMenu.firstElementChild as HTMLElement,
-        '选一座防御塔',
-      );
-    }
-  }
-
-  private closeBuildMenu(): void {
-    this.buildMenu?.remove();
-    this.buildMenu = null;
-  }
-
-  private firstFreeSpotIndex(): number {
-    const used = new Set(this.usedSpots.values());
-    return TOWER_SPOTS.findIndex((_, i) => !used.has(i));
-  }
-
-  private pulseFreeSpots(): void {
-    const used = new Set(this.usedSpots.values());
-    this.spotRings.forEach((ring, i) => {
-      if (used.has(i)) return;
-      const base = ring.scale.x;
-      Tweens.add({
-        duration: 450,
-        ease: Ease.inOutSine,
-        onUpdate: (t) => {
-          const s = base + Math.sin(t * Math.PI * 4) * 0.18;
-          ring.scale.set(s, s, s);
-        },
-        onComplete: () => ring.scale.set(base, base, base),
-      });
-    });
   }
 
   onPick(id: string): void {
@@ -423,9 +348,27 @@ export class LevelController {
         return;
       }
     }
-    // 空闲塔位 + 已选塔型：建造
-    if (!this.selectedTowerDef || this.session.state.phase !== 'BUILD') return;
-    const def = this.selectedTowerDef;
+    // 空闲塔位：弹出建塔菜单（任何阶段均可，不暂停战斗）
+    const [sx, sy] = TOWER_SPOTS[index];
+    const anchor = this.island.projectToScreen(this.worldOf(sx, sy));
+    this.buildPopup.open({
+      defs: [ARCHER_TOWER, KNIGHT_CAMP],
+      canAfford: (price) => this.wallet.canAfford(price),
+      anchor,
+      onBuild: (def) => this.buildTower(index, def),
+      onClose: () => {},
+    });
+    if (this.tutorialStep === 1) {
+      this.tutorialStep = 2;
+      // 弹窗渲染后高亮第一张卡片
+      setTimeout(() => {
+        const card = document.querySelector('.build-popup .tower-card');
+        if (card) this.tutorial.pointToElement(card as HTMLElement, '选一座防御塔');
+      }, 0);
+    }
+  }
+
+  private buildTower(index: number, def: TowerDefBase): void {
     if (!this.wallet.spend(def.price)) return; // 金币不足（失败保护：初始资金够一座塔）
 
     const [x, y] = TOWER_SPOTS[index];
@@ -465,26 +408,24 @@ export class LevelController {
     this.towerIds.set(pickId, tower);
     this.picker.add({ object: model, id: pickId });
 
-    // 塔位标记移除
-    const ring = this.spotRings[index];
+    // 塔位旗帜移除
+    const flag = this.spotFlags[index];
     this.picker.remove(`spot-${index}`);
-    this.island.scene.remove(ring);
+    this.island.scene.remove(flag.group);
     this.island.scene.remove(this.spotDiscs[index]);
 
     this.towers.push(tower);
     this.usedSpots.set(tower, index);
-    this.selectedTowerDef = null;
     sfx.build();
     this.refreshHud();
 
-    if (this.tutorialStep === 3 && this.phaseButton) {
-      this.tutorialStep = 4;
+    if (this.tutorialStep === 2 && this.phaseButton) {
+      this.tutorialStep = 3;
       this.tutorial.pointToElement(this.phaseButton, '点这里继续');
     }
   }
 
   private showUpgradePanel(tower: Tower): void {
-    if (this.session.state.phase !== 'BUILD') return;
     if (!tower.canUpgrade || tower.upgradeCost === null) return;
     const cost = tower.upgradeCost;
 
@@ -725,7 +666,14 @@ export class LevelController {
 
   // ---------- 帧循环 ----------
 
+  private flagTime = 0;
+
   private update(dtMs: number): void {
+    // 旗面轻微摆动（风景动画，不受战斗暂停影响）
+    this.flagTime += dtMs;
+    for (const flag of this.spotFlags) {
+      flag.flagMesh.rotation.y = Math.sin(this.flagTime / 400) * 0.2;
+    }
     if (this.combatPaused) return;
 
     // 出怪

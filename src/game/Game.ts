@@ -1,12 +1,13 @@
 import { unlockAudio } from '../audio/sfx';
-import { PATH_POINTS } from '../data/level';
+import { PATH_POINTS, TOWER_SPOTS } from '../data/level';
 import type { WordPack } from '../data/words';
 import { WordAudio } from '../quiz/WordAudio';
 import { el, makeButton } from '../ui/dom';
 import { PackSelectView } from '../ui/PackSelectView';
-import { toWorld } from '../world/coords';
+import { toWorld, islandHeight } from '../world/coords';
 import { IslandScene } from '../world/IslandScene';
 import { RaycastPicker } from '../world/RaycastPicker';
+import { Vector3 } from 'three';
 import { LevelController } from './LevelController';
 
 /**
@@ -40,6 +41,16 @@ export class Game {
       this.packSelect.hide();
       this.startLevel(island, picker, uiRoot, pack);
     });
+
+    // 测试辅助：暴露塔位屏幕坐标（自动化冒烟用）
+    (window as unknown as Record<string, unknown>).__vorush = {
+      spotScreenPos: (index: number) => {
+        const [x2d, y2d] = TOWER_SPOTS[index];
+        const { x, z } = toWorld(x2d, y2d);
+        const world = new Vector3(x, islandHeight(x, z), z);
+        return island.projectToScreen(world);
+      },
+    };
 
     this.showStartOverlay(uiRoot, () => this.packSelect.show());
 

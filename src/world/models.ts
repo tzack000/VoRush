@@ -142,6 +142,16 @@ export function makeSpotRing(): THREE.Mesh {
   return m;
 }
 
+/** 塔位旗帜（Kingdom Rush 式）：旗杆 + 旗面。返回组与旗面（供摆动动画）。 */
+export function makeFlag(): { group: THREE.Group; flagMesh: THREE.Mesh } {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.CylinderGeometry(0.04, 0.05, 1.3, 5), 0x8b5a2b, 0, 0.65));
+  const flagMesh = mesh(new THREE.BoxGeometry(0.5, 0.3, 0.03), 0xc05c5c, 0.27, 1.12);
+  g.add(flagMesh);
+  g.add(mesh(new THREE.ConeGeometry(0.12, 0.25, 6), 0xc05c5c, 0.47, 1.12));
+  return { group: g, flagMesh };
+}
+
 /** 塔位拾取盘：不可见，仅用于 Raycast（圆环中间是空洞，无法稳定命中） */
 export function makeSpotPickDisc(): THREE.Mesh {
   const geo = new THREE.CircleGeometry(1.0, 16);

@@ -297,6 +297,35 @@ body {
   gap: 20px;
 }
 
+/* ---------- 建塔弹窗（KR 式） ---------- */
+
+.popup-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+}
+
+.build-popup {
+  position: absolute;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 14px;
+  background: #fff8e7;
+  border: 5px solid #8b5a2b;
+  border-radius: 20px;
+  padding: 14px;
+}
+
+.build-popup .tower-card {
+  min-width: 220px;
+  min-height: 100px;
+}
+
+.tower-card.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ---------- 词包选择 ---------- */
 
 .pack-select {

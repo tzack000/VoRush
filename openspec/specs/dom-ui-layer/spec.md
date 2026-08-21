@@ -2,7 +2,7 @@
 
 ## Purpose
 
-本规格由 change `threejs-3d-migration` 同步而来，描述 dom-ui-layer 规格 的系统行为。
+本规格由 change `threejs-3d-migration`、`kr-style-building` 同步而来，描述 dom-ui-layer 规格 的系统行为。
 
 ## Requirements
 
@@ -37,3 +37,17 @@ UI 覆盖层打开（答题、菜单、结算）时 MUST 屏蔽 3D 场景的指�
 
 - **WHEN** 出现听音选图题
 - **THEN** 4 个选项为不小于 60pt 的 emoji 图按钮，1 正 3 误
+
+### Requirement: 锚定式建塔菜单
+
+建塔菜单 SHALL 弹出在被点击塔位的屏幕位置旁（视口内自动防溢出），展示塔型卡片（emoji、名称、儿童提示、价格、可负担状态）；点击菜单外区域或卡片后关闭。
+
+#### Scenario: 菜单锚定塔位
+
+- **WHEN** 玩家点击屏幕右侧的塔位旗帜
+- **THEN** 建塔菜单出现在该塔位附近且不超出屏幕右边缘
+
+#### Scenario: 菜单外点击关闭
+
+- **WHEN** 建塔菜单打开时玩家点击菜单外的战场区域
+- **THEN** 菜单关闭，不建造任何塔

@@ -3,10 +3,11 @@ import { sfx } from '../audio/sfx';
 import { ArcherTower } from '../combat/ArcherTower';
 import { Enemy } from '../combat/Enemy';
 import { KnightCamp } from '../combat/KnightCamp';
+import { LaneBag } from '../combat/LaneBag';
 import { Path } from '../combat/Path';
 import { WaveSpawner } from '../combat/WaveSpawner';
 import { ECONOMY } from '../data/economy';
-import { PATH_POINTS, TOWER_SPOTS } from '../data/level';
+import type { LevelMapDef, Pt2 } from '../data/levelMaps';
 import { writeClear } from '../data/progress';
 import { ARCHER_TOWER, KNIGHT_CAMP, type TowerDefBase } from '../data/towers';
 import { ENEMY_DEFS, EXIT_LIVES, WAVES, type EnemyDef } from '../data/waves';
@@ -27,6 +28,7 @@ import { Hud } from '../ui/Hud';
 import { StarResultView } from '../ui/StarResultView';
 import { TutorialOverlay } from '../ui/TutorialOverlay';
 import { toWorld, islandHeight } from '../world/coords';
+import { disposeObject } from '../world/dispose';
 import type { IslandScene } from '../world/IslandScene';
 import {
   makeArcherTower,
@@ -39,6 +41,7 @@ import {
   makeKnightCamp,
   makeSpotPickDisc,
   makeFlag,
+  makeOutpost,
   makeWolf,
   setHpBarRatio,
 } from '../world/models';
@@ -64,16 +67,40 @@ interface TowerView {
   knight?: { group: THREE.Group; fg: THREE.Sprite };
 }
 
+/** 一条入侵路径：折线 + 终点哨站 */
+interface Lane {
+  id: string;
+  path: Path;
+  goalId: string;
+  /** 本局已在该路放出的怪数（调试与冒烟用） */
+  spawned: number;
+}
+
+/** 场景里的一座守护哨站 */
+interface GoalView {
+  group: THREE.Group;
+  baseY: number;
+  /** 被突破次数 */
+  breached: number;
+}
+
 /**
- * LevelController：1-1 草原哨站单局编排（替代 Phaser LevelScene）。
+ * LevelController：单局编排（替代 Phaser LevelScene）。
  * 逻辑实体（Enemy/Tower/Spawner）与 3D 视图分离，每帧同步；
  * UI 全部 DOM。答题/教学时 combatPaused=true 并屏蔽 3D 拾取。
+ * 地形、入侵路径与守护目标取自 level.map，每关不同。
  */
 export class LevelController {
   private wallet = new GoldWallet();
   private book: WordBook;
   private session: SessionStateMachine;
-  private path: Path;
+  private map: LevelMapDef;
+  /** 全部入侵路径 */
+  private lanes: Lane[] = [];
+  /** 随机分路（洗牌袋：随机但不扎堆） */
+  private laneBag: LaneBag;
+  private goalViews = new Map<string, GoalView>();
+  private lateralSeq = 0;
   private enemies: Enemy[] = [];
   private towers: Tower[] = [];
   private usedSpots = new Map<Tower, number>();
@@ -113,16 +140,29 @@ export class LevelController {
     // 动物包旧键一次性迁移
     if (this.pack.id === 'animals-1') WordBook.migrate(LEGACY_BOOK_KEY, bookKey(this.pack.id));
     this.book = WordBook.load(bookKey(this.pack.id), this.wordIds);
-    this.path = new Path(PATH_POINTS.map(([x, y]) => ({ x, z: y })));
+    // 实体的落地高度取自 islandHeight，地形必须先建好
+    if (!island.terrainReady) {
+      throw new Error('island.buildTerrain() must run before LevelController');
+    }
+    this.map = level.map;
+    this.lanes = this.map.paths.map((p) => ({
+      id: p.id,
+      path: new Path(p.points.map(([x, y]) => ({ x, z: y }))),
+      goalId: p.goalId,
+      spawned: 0,
+    }));
+    this.laneBag = new LaneBag(this.lanes.length);
     this.hud = new Hud(uiRoot);
     this.quiz = new QuizOverlay(uiRoot);
     this.resultView = new StarResultView(uiRoot);
+    this.resultView.goalLabels = this.map.goals.map((g) => g.label);
     this.tutorial = new TutorialOverlay(uiRoot);
     this.buildPopup = new BuildPopup(uiRoot);
     this.session = new SessionStateMachine(ECONOMY.waveCount, {
       onEnter: (s) => this.onEnterState(s),
     });
 
+    this.createGoals();
     this.createSpotFlags();
     this.refreshHud('');
     this.stopFrame = island.onFrame((dt) => this.update(dt));
@@ -130,6 +170,29 @@ export class LevelController {
 
   private get wordIds(): string[] {
     return this.pack.words.map((w) => w.id);
+  }
+
+  /** 调试/冒烟用：本局关键状态（生命、分路计数、哨站被突破次数） */
+  debugStats(): {
+    levelIndex: number;
+    lives: number;
+    gold: number;
+    wave: number;
+    enemies: number;
+    towers: number;
+    lanes: Array<{ id: string; goalId: string; spawned: number }>;
+    goals: Array<{ id: string; breached: number }>;
+  } {
+    return {
+      levelIndex: this.level.index,
+      lives: this.lives,
+      gold: this.wallet.balance,
+      wave: this.session.state.wave,
+      enemies: this.enemies.length,
+      towers: this.towers.length,
+      lanes: this.lanes.map((l) => ({ id: l.id, goalId: l.goalId, spawned: l.spawned })),
+      goals: [...this.goalViews].map(([id, v]) => ({ id, breached: v.breached })),
+    };
   }
 
   private saveBook(): void {
@@ -143,18 +206,65 @@ export class LevelController {
     return new THREE.Vector3(x, islandHeight(x, z), z);
   }
 
+  /** 骑士集结点：全部路径中距塔位最近的一点（塔位挨着分岔前的咽喉时可同时拦两条支路） */
   private nearestPathPoint(x2d: number, y2d: number): { x: number; y: number } {
-    let best = { x: 0, y: 0 };
+    let best = { x: x2d, y: y2d };
     let bestDist = Number.MAX_VALUE;
-    for (let i = 0; i <= 400; i++) {
-      const p = this.path.pointAt((i / 400) * this.path.length);
-      const d = Math.hypot(x2d - p.x, y2d - p.z);
-      if (d < bestDist) {
-        bestDist = d;
-        best = { x: p.x, y: p.z };
+    for (const lane of this.lanes) {
+      const steps = Math.max(100, Math.ceil(lane.path.length / 8));
+      for (let i = 0; i <= steps; i++) {
+        const p = lane.path.pointAt((i / steps) * lane.path.length);
+        const d = Math.hypot(x2d - p.x, y2d - p.z);
+        if (d < bestDist - 1e-6) {
+          bestDist = d;
+          best = { x: p.x, y: p.z };
+        }
       }
     }
     return best;
+  }
+
+  // ---------- 守护目标 ----------
+
+  private createGoals(): void {
+    for (const g of this.map.goals) {
+      const group = makeOutpost(g.tier);
+      group.scale.setScalar(1.6);
+      const w = this.worldOf(g.at[0], g.at[1]);
+      group.position.copy(w);
+      group.rotation.y = this.goalFacing(g.id);
+      this.island.scene.add(group);
+      this.goalViews.set(g.id, { group, baseY: w.y, breached: 0 });
+    }
+  }
+
+  /** 大门朝向最后一段来路（2D x/y 与世界 x/z 同比，可直接算） */
+  private goalFacing(goalId: string): number {
+    const lane = this.lanes.find((l) => l.goalId === goalId);
+    if (!lane) return 0;
+    const end = lane.path.pointAt(lane.path.length);
+    const back = lane.path.pointAt(Math.max(0, lane.path.length - 60));
+    return Math.atan2(back.x - end.x, back.z - end.z);
+  }
+
+  /** 敌人突破时让哨站抖一下：共享血池下，孩子也看得出是哪座被打进去了 */
+  private punchGoal(goalId: string): void {
+    const view = this.goalViews.get(goalId);
+    if (!view) return;
+    view.breached += 1;
+    sfx.wrong();
+    Tweens.add({
+      duration: 420,
+      ease: Ease.linear,
+      onUpdate: (t) => {
+        view.group.position.y = view.baseY + Math.sin(t * Math.PI * 4) * 0.28 * (1 - t);
+        view.group.rotation.z = Math.sin(t * Math.PI * 6) * 0.07 * (1 - t);
+      },
+      onComplete: () => {
+        view.group.position.y = view.baseY;
+        view.group.rotation.z = 0;
+      },
+    });
   }
 
   private refreshHud(waveLabel?: string): void {
@@ -175,24 +285,42 @@ export class LevelController {
     this.session.start();
   }
 
-  /** 销毁：清理 3D 实体、补间与 DOM，供返回词包选择/重玩 */
+  /** 销毁：清理 3D 实体、补间与 DOM，供返回大地图/重玩 */
   dispose(): void {
     this.crate?.destroy();
     this.crate = null;
     for (const enemy of this.enemies) {
       const view = this.enemyViews.get(enemy);
-      if (view) this.island.scene.remove(view.group);
+      if (view) {
+        this.island.scene.remove(view.group);
+        disposeObject(view.group); // 血条 SpriteMaterial 是新建的，必须释放
+      }
     }
     this.enemies = [];
     this.enemyViews.clear();
     for (const view of this.towerViews.values()) {
       this.island.scene.remove(view.group);
-      if (view.knight) this.island.scene.remove(view.knight.group);
+      disposeObject(view.group);
+      if (view.knight) {
+        this.island.scene.remove(view.knight.group);
+        disposeObject(view.knight.group);
+      }
     }
     this.towerViews.clear();
     this.towers = [];
-    for (const flag of this.spotFlags) this.island.scene.remove(flag.group);
-    for (const disc of this.spotDiscs) this.island.scene.remove(disc);
+    for (const view of this.goalViews.values()) {
+      this.island.scene.remove(view.group);
+      disposeObject(view.group);
+    }
+    this.goalViews.clear();
+    for (const flag of this.spotFlags) {
+      this.island.scene.remove(flag.group);
+      disposeObject(flag.group);
+    }
+    for (const disc of this.spotDiscs) {
+      this.island.scene.remove(disc);
+      disposeObject(disc); // 拾取盘材质是新建的
+    }
     this.spotFlags = [];
     this.spotDiscs = [];
     this.picker.clear();
@@ -282,7 +410,7 @@ export class LevelController {
   // ---------- 布防 ----------
 
   private createSpotFlags(): void {
-    TOWER_SPOTS.forEach(([x, y], i) => {
+    this.map.towerSpots.forEach(([x, y], i) => {
       // Kingdom Rush 式塔位：一面旗帜
       const flag = makeFlag();
       const w = this.worldOf(x, y);
@@ -314,7 +442,7 @@ export class LevelController {
     // 首次教学：每次只教一个操作
     if (wave === 0 && TutorialOverlay.shouldShow() && this.tutorialStep === 0) {
       this.tutorialStep = 1;
-      const [sx, sy] = TOWER_SPOTS[0];
+      const [sx, sy] = this.map.towerSpots[0];
       const screen = this.island.projectToScreen(this.worldOf(sx, sy));
       this.tutorial.pointTo(screen.x, screen.y, '点旗子建塔');
     }
@@ -353,7 +481,7 @@ export class LevelController {
       }
     }
     // 空闲塔位：弹出建塔菜单（任何阶段均可，不暂停战斗）
-    const [sx, sy] = TOWER_SPOTS[index];
+    const [sx, sy] = this.map.towerSpots[index];
     const anchor = this.island.projectToScreen(this.worldOf(sx, sy));
     this.buildPopup.open({
       defs: [ARCHER_TOWER, KNIGHT_CAMP],
@@ -375,7 +503,7 @@ export class LevelController {
   private buildTower(index: number, def: TowerDefBase): void {
     if (!this.wallet.spend(def.price)) return; // 金币不足（失败保护：初始资金够一座塔）
 
-    const [x, y] = TOWER_SPOTS[index];
+    const [x, y] = this.map.towerSpots[index];
     let tower: Tower;
     let model: THREE.Group;
     if (def.id === 'archer') {
@@ -507,7 +635,7 @@ export class LevelController {
   private enterCombat(wave: number): void {
     this.refreshHud(`第 ${wave}/3 波 ⚔️`);
     this.spawner = new WaveSpawner(scaleWaves(WAVES, this.level.scale)[wave - 1]);
-    this.crate = new SupplyCrate({
+    this.crate = new SupplyCrate(this.map.cratePositions, {
       onSpawn: (x2d, y2d) => {
         const group = makeCrate();
         group.scale.setScalar(1.4);
@@ -556,9 +684,14 @@ export class LevelController {
     });
   }
 
+  /** 横向微偏移：打散共享前缀上完全重叠的敌人（幅度小到看不出拐点跳变） */
+  private static readonly LATERALS = [0, -8, 8, -4, 4];
+
   private spawnEnemy(id: EnemyDef['id']): void {
-    const start = this.path.pointAt(0);
-    const enemy = new Enemy(scaleEnemy(ENEMY_DEFS[id], this.level.scale), start.x, start.z);
+    const lane = this.lanes[this.laneBag.next()];
+    lane.spawned += 1;
+    const lateral = LevelController.LATERALS[this.lateralSeq++ % LevelController.LATERALS.length];
+    const enemy = new Enemy(scaleEnemy(ENEMY_DEFS[id], this.level.scale), lane.path, lane.goalId, lateral);
     this.enemies.push(enemy);
 
     const group =
@@ -577,7 +710,9 @@ export class LevelController {
   }
 
   private onEnemyExited(enemy: Enemy): void {
+    // 共享血池：任一哨站被突破都扣同一个池，但要点亮那座哨站让孩子看见
     this.lives = Math.max(0, this.lives - enemy.def.lifeCost);
+    this.punchGoal(enemy.goalId);
     this.refreshHud();
     this.removeEnemyView(enemy, false);
     if (this.lives <= 0) this.session.fail();
@@ -682,7 +817,7 @@ export class LevelController {
     // 敌人推进
     for (const enemy of [...this.enemies]) {
       if (!enemy.active) continue;
-      if (enemy.updateEnemy(dtMs, this.path) === 'exited') {
+      if (enemy.updateEnemy(dtMs) === 'exited') {
         this.enemies = this.enemies.filter((e) => e !== enemy);
         this.onEnemyExited(enemy);
         if (this.session.state.phase === 'FAIL') return;

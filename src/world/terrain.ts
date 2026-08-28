@@ -31,11 +31,16 @@ function distToSegment(
   return Math.hypot(px - cx, pz - cz);
 }
 
+/** 一条路径的世界坐标折线 */
+export type PathWorld = ReadonlyArray<{ x: number; z: number }>;
+
 /**
  * 程序化微缩岛屿：PlaneGeometry 顶点位移（椭圆平台 + 悬崖落水），
  * 顶点着色区分草地 / 路径带 / 沙岸；flat shading 出低多边形面感。
+ *
+ * pathsWorld 可传多条（多路径关卡 / 分岔）；共享前缀被重复着色是幂等的。
  */
-export function createIsland(pathWorld: Array<{ x: number; z: number }>): THREE.Mesh {
+export function createIsland(pathsWorld: ReadonlyArray<PathWorld>): THREE.Mesh {
   const geo = new THREE.PlaneGeometry(70, 44, 100, 64);
   geo.rotateX(-Math.PI / 2);
 
@@ -49,12 +54,14 @@ export function createIsland(pathWorld: Array<{ x: number; z: number }>): THREE.
     const h = islandHeight(x, z);
     pos.setY(i, h);
 
-    // 到路径的最短距离
+    // 到任意一条路径的最短距离
     let minPathDist = Number.MAX_VALUE;
-    for (let s = 0; s < pathWorld.length - 1; s++) {
-      const a = pathWorld[s];
-      const b = pathWorld[s + 1];
-      minPathDist = Math.min(minPathDist, distToSegment(x, z, a.x, a.z, b.x, b.z));
+    for (const pathWorld of pathsWorld) {
+      for (let s = 0; s < pathWorld.length - 1; s++) {
+        const a = pathWorld[s];
+        const b = pathWorld[s + 1];
+        minPathDist = Math.min(minPathDist, distToSegment(x, z, a.x, a.z, b.x, b.z));
+      }
     }
 
     if (h < -0.35) {

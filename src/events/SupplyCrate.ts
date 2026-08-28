@@ -1,4 +1,4 @@
-import { CRATE_POSITIONS } from '../data/level';
+import type { Pt2 } from '../data/levelMaps';
 import { sfx } from '../audio/sfx';
 
 export interface SupplyCrateHooks {
@@ -24,7 +24,10 @@ export class SupplyCrate {
   private spawned = false;
   private done = false;
 
-  constructor(private hooks: SupplyCrateHooks) {
+  constructor(
+    private positions: ReadonlyArray<Pt2>,
+    private hooks: SupplyCrateHooks,
+  ) {
     this.spawnTimer =
       SPAWN_DELAY_MIN_MS + Math.random() * (SPAWN_DELAY_MAX_MS - SPAWN_DELAY_MIN_MS);
   }
@@ -37,7 +40,7 @@ export class SupplyCrate {
       this.spawnTimer -= dtMs;
       if (this.spawnTimer <= 0) {
         this.spawned = true;
-        const [x, y] = CRATE_POSITIONS[Math.floor(Math.random() * CRATE_POSITIONS.length)];
+        const [x, y] = this.positions[Math.floor(Math.random() * this.positions.length)];
         sfx.crate();
         this.hooks.onSpawn(x, y);
       }

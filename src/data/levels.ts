@@ -1,4 +1,5 @@
 import { ENEMY_DEFS, WAVES, type EnemyDef, type WaveDef } from './waves';
+import { getLevelMap, type LevelMapDef } from './levelMaps';
 
 /** 难度缩放参数（初始参考值，待试玩校准） */
 export interface DifficultyScale {
@@ -17,6 +18,8 @@ export interface LevelDef {
   id: string;
   packId: string;
   scale: DifficultyScale;
+  /** 该关的地形、入侵路径与守护目标 */
+  map: LevelMapDef;
 }
 
 function scaleFor(index: number): DifficultyScale {
@@ -45,6 +48,7 @@ export const LEVELS: LevelDef[] = PACK_ORDER.map((packId, i) => ({
   id: packId,
   packId,
   scale: scaleFor(i + 1),
+  map: getLevelMap(i + 1),
 }));
 
 export function getLevel(index: number): LevelDef {
@@ -69,12 +73,15 @@ export function scaleEnemy(def: EnemyDef, scale: DifficultyScale): EnemyDef {
   };
 }
 
-/** 波次按关卡缩放：每组出怪 +countBonus（至少 1 只） */
+/**
+ * 波次按关卡缩放：每组出怪 +countBonus（至少 1 只）。
+ * 原本只有 1 只的组不加成——队长是压阵的精英，堆成 5 只会让第 9 关直接崩盘。
+ */
 export function scaleWaves(base: WaveDef[], scale: DifficultyScale): WaveDef[] {
   return base.map((wave) => ({
     spawns: wave.spawns.map((s) => ({
       ...s,
-      count: Math.max(1, s.count + scale.countBonus),
+      count: s.count > 1 ? Math.max(1, s.count + scale.countBonus) : s.count,
     })),
   }));
 }

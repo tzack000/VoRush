@@ -40,7 +40,8 @@ export class ArcherTower {
     for (const e of enemies) {
       if (!e.active) continue;
       const d = Math.hypot(this.x - e.x, this.y - e.z);
-      if (d <= this.stats.range && (!best || e.dist > best.dist)) best = e;
+      // 多条路径长度不同，dist 不可比；用"离哨站多远"挑最紧急的目标
+      if (d <= this.stats.range && (!best || e.remaining < best.remaining)) best = e;
     }
     if (!best) return null;
 

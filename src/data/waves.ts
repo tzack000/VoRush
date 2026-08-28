@@ -73,7 +73,9 @@ export const WAVES: WaveDef[] = [
     spawns: [
       { enemy: 'goblin', count: 5, intervalMs: 1800, delayMs: 1000 },
       { enemy: 'wolf', count: 3, intervalMs: 1600, delayMs: 5000 },
-      { enemy: 'captain', count: 1, intervalMs: 0, delayMs: 8000 },
+      // intervalMs 不能为 0：难度缩放会给 count 加成，0 间隔会让多只队长在同一瞬间、
+      // 同一位置生成（视觉上只有 1 只，实际叠了 5 倍血量）
+      { enemy: 'captain', count: 1, intervalMs: 1200, delayMs: 8000 },
     ],
   },
 ];

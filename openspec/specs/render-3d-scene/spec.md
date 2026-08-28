@@ -2,7 +2,7 @@
 
 ## Purpose
 
-本规格由 change `threejs-3d-migration`、`overworld-map` 同步而来，描述 render-3d-scene 规格 的系统行为。
+本规格由 change `threejs-3d-migration`、`overworld-map`、`level-terrain` 同步而来，描述 render-3d-scene 规格 的系统行为。
 
 ## Requirements
 
@@ -93,3 +93,17 @@
 
 - **WHEN** 玩家在同一会话内重玩同一关多次
 - **THEN** 每帧仍然只执行一次关卡更新逻辑
+
+### Requirement: 地形程序化与换关重建
+
+战斗岛屿 SHALL 由参数化的形状定义（海岸线摆动谐波、半径、平台起伏）程序化生成，按关卡种子逐关不同；东西半径恒定以适配固定相机取景。进入关卡时 SHALL 按其地图重建地形并在离开时释放 GPU 资源——共享材质缓存 MUST NOT 被释放，岛屿网格与倒影的几何体 MUST 恰好释放一次。重建必须在创建任何关卡实体之前完成。
+
+#### Scenario: 换关换岛
+
+- **WHEN** 从一关切换到另一关
+- **THEN** 岛屿轮廓与路径着色随关卡变化，旧网格被释放
+
+#### Scenario: 性能预算不因换关恶化
+
+- **WHEN** 反复进出关卡
+- **THEN** 场景对象数量稳定，iPad 上帧率不明显下滑

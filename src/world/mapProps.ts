@@ -13,6 +13,8 @@ function mat(color: number): THREE.MeshStandardMaterial {
   let m = materialCache.get(color);
   if (!m) {
     m = new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.85 });
+    // 模块级缓存共享：disposeObject 必须跳过它
+    m.userData.shared = true;
     materialCache.set(color, m);
   }
   return m;

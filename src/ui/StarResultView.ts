@@ -15,7 +15,7 @@ export class StarResultView {
     ];
     this.mount(
       el('div', { className: 'modal-panel' }, [
-        el('div', { className: 'modal-title', text: '守住了草原哨站！' }),
+        el('div', { className: 'modal-title', text: this.victoryTitle }),
         ...rows.map(([earned, label]) =>
           el('div', { className: `star-row ${earned ? 'earned' : ''}` }, [
             el('span', { className: 'star', text: earned ? '★' : '☆' }),
@@ -29,6 +29,13 @@ export class StarResultView {
       ]),
     );
   }
+
+  /** 本关守护的哨站名（多哨站用"和"连接） */
+  set goalLabels(labels: string[]) {
+    this.victoryTitle = `守住了${labels.join('和')}！`;
+  }
+
+  private victoryTitle = '守住了哨站！';
 
   showFail(onRetry: () => void, onExit: () => void): void {
     this.mount(

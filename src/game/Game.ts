@@ -1,6 +1,6 @@
 import { unlockAudio } from '../audio/sfx';
-import { PATH_POINTS, TOWER_SPOTS } from '../data/level';
 import { LEVELS, type LevelDef } from '../data/levels';
+import { getLevelMap, type LevelMapDef } from '../data/levelMaps';
 import { clearedLevelIds, readClear, starCount } from '../data/progress';
 import { buildMapLayout, newlyUnlocked, nodeState } from '../data/mapLayout';
 import { WordAudio } from '../quiz/WordAudio';
@@ -8,7 +8,7 @@ import { el, makeButton } from '../ui/dom';
 import type { MapNodeStatus } from '../ui/WorldMapView';
 import { WorldMapView } from '../ui/WorldMapView';
 import { toWorld, islandHeight } from '../world/coords';
-import { IslandScene } from '../world/IslandScene';
+import { IslandScene, type TerrainSpec } from '../world/IslandScene';
 import { RaycastPicker } from '../world/RaycastPicker';
 import { WorldMap } from '../world/WorldMap';
 import { Tweens } from '../world/Tween';
@@ -28,6 +28,8 @@ export class Game {
   /** 进入单局前的通关集合，用于结算回来时判断新解锁 */
   private clearedBefore: ReadonlySet<string> = new Set();
   private pendingUnlock: number | null = null;
+  /** 当前已建好地形的关卡地图（塔位屏幕坐标等调试钩子依赖它） */
+  private currentMap: LevelMapDef = getLevelMap(1);
 
   constructor(container: HTMLElement) {
     // DOM UI 覆盖层
@@ -35,9 +37,8 @@ export class Game {
     container.append(uiRoot);
     container.append(el('div', { id: 'rotate-tip', text: '请旋转设备，横屏游玩 🔄' }));
 
-    // 3D 场景（路径映射为世界坐标供地形着色）
-    const pathWorld = PATH_POINTS.map(([x, y]) => toWorld(x, y));
-    const island = new IslandScene(container, pathWorld);
+    // 3D 场景（地形按关卡重建，见 buildTerrainFor）
+    const island = new IslandScene(container);
 
     // 音频预载
     WordAudio.init();
@@ -52,10 +53,13 @@ export class Game {
       this.onTapNode(index),
     );
 
+    // 开始遮罩背后先建好第 1 关地形，避免露出空水面
+    island.buildTerrain(this.terrainSpecFor(this.currentMap));
+
     // 测试辅助：暴露塔位屏幕坐标（自动化冒烟用）
     (window as unknown as Record<string, unknown>).__vorush = {
       spotScreenPos: (index: number) => {
-        const [x2d, y2d] = TOWER_SPOTS[index];
+        const [x2d, y2d] = this.currentMap.towerSpots[index];
         const { x, z } = toWorld(x2d, y2d);
         const world = new Vector3(x, islandHeight(x, z), z);
         return island.projectToScreen(world);
@@ -63,6 +67,16 @@ export class Game {
       mapLevels: () =>
         this.layout.nodes.map((n) => ({ index: n.index, packId: n.packId, x: n.x, z: n.z })),
       mapCamera: () => ({ x: this.map.targetX, z: this.map.targetZ, zoom: this.map.zoomLevel }),
+      // 当前已建好地形的关卡地图
+      levelMap: () => this.currentMap,
+      goalScreenPos: (goalId: string) => {
+        const g = this.currentMap.goals.find((x) => x.id === goalId);
+        if (!g) return null;
+        const { x, z } = toWorld(g.at[0], g.at[1]);
+        return island.projectToScreen(new Vector3(x, islandHeight(x, z), z));
+      },
+      terrainInfo: () => island.terrainDebug(),
+      battleStats: () => this.controller?.debugStats() ?? null,
     };
 
     this.showStartOverlay(uiRoot, () => this.enterMap(true));
@@ -156,6 +170,18 @@ export class Game {
 
   // ---------- 单局 ----------
 
+  /** 关卡地图 → 建地形所需的世界坐标数据 */
+  private terrainSpecFor(map: LevelMapDef): TerrainSpec {
+    return {
+      levelIndex: map.levelIndex,
+      shape: map.shape,
+      pathsWorld: map.paths.map((p) => p.points.map(([x, y]) => toWorld(x, y))),
+      spotsWorld: map.towerSpots.map(([x, y]) => toWorld(x, y)),
+      bushSeed: map.bushSeed,
+      bushCount: map.bushCount,
+    };
+  }
+
   private startLevel(
     island: IslandScene,
     picker: RaycastPicker,
@@ -171,6 +197,9 @@ export class Game {
     Tweens.killAll();
     island.setView(null, null);
     this.controller?.dispose();
+    // 顺序要紧：先换地形，再建关卡实体（实体的落地高度取自 islandHeight）
+    this.currentMap = level.map;
+    island.buildTerrain(this.terrainSpecFor(level.map));
     this.controller = new LevelController(island, picker, uiRoot, level, {
       onReplay: () => this.startLevel(island, picker, uiRoot, level),
       onExit: () => this.onLevelExit(level),

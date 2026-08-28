@@ -27,21 +27,36 @@ export class Enemy {
   z = 0;
   /** 视图标记：被移除后视图停止同步 */
   active = true;
+  /** 所属路径：多路径关卡里每只怪各走一条 */
+  readonly path: Path;
+  /** 终点的守护目标 id（突破时用于定位反馈） */
+  readonly goalId: string;
+  /** 横向微偏移，避免共享前缀上的敌人完全重叠 */
+  readonly lateral: number;
   private attackCd = 0;
 
-  constructor(def: EnemyDef, startX: number, startZ: number) {
+  constructor(def: EnemyDef, path: Path, goalId: string, lateral = 0) {
     this.def = def;
     this.hp = def.hp;
     this.maxHp = def.hp;
-    this.x = startX;
-    this.z = startZ;
+    this.path = path;
+    this.goalId = goalId;
+    this.lateral = lateral;
+    const start = path.pointAt(0, lateral);
+    this.x = start.x;
+    this.z = start.z;
+  }
+
+  /** 距哨站还剩多远：路径长度不同时 dist 不可比，塔索敌要用这个 */
+  get remaining(): number {
+    return this.path.length - this.dist;
   }
 
   /**
    * 每帧推进（仅战斗未暂停时调用）。
-   * 返回 'exited' 表示到达出口，调用方负责扣生命并移除。
+   * 返回 'exited' 表示抵达哨站，调用方负责扣生命并移除。
    */
-  updateEnemy(dtMs: number, path: Path): EnemyUpdateResult {
+  updateEnemy(dtMs: number): EnemyUpdateResult {
     if (this.blockedBy && this.blockedBy.alive) {
       this.attackCd -= dtMs;
       if (this.attackCd <= 0) {
@@ -53,9 +68,9 @@ export class Enemy {
     this.blockedBy = null;
 
     this.dist += this.def.speed * (dtMs / 1000);
-    if (this.dist >= path.length) return 'exited';
+    if (this.dist >= this.path.length) return 'exited';
 
-    const p = path.pointAt(this.dist);
+    const p = this.path.pointAt(this.dist, this.lateral);
     this.x = p.x;
     this.z = p.z;
     return 'alive';

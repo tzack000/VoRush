@@ -11,6 +11,8 @@ function mat(color: number): THREE.MeshStandardMaterial {
   let m = materialCache.get(color);
   if (!m) {
     m = new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.85 });
+    // 模块级缓存共享：disposeObject 必须跳过它
+    m.userData.shared = true;
     materialCache.set(color, m);
   }
   return m;
@@ -165,6 +167,54 @@ export function makeSpotPickDisc(): THREE.Mesh {
   );
   m.rotation.x = -Math.PI / 2;
   return m;
+}
+
+/**
+ * 守护哨站（低多边形小屋 + 围墙 + 旗）。
+ * tier 1 = 木哨站（1-6 关）；tier 2 = 石堡，加高加角楼。
+ * 模型 +Z 面是大门，调用方用 rotation.y 对准来路。
+ */
+export function makeOutpost(tier: 1 | 2): THREE.Group {
+  const g = new THREE.Group();
+  const wallColor = tier === 1 ? 0xd9cbb0 : 0xb9b3a6;
+  const roof = tier === 1 ? 0xc05c5c : 0x4a6b8a;
+
+  // 台基
+  g.add(mesh(new THREE.CylinderGeometry(1.15, 1.3, 0.24, 9), 0xc9c2b2, 0, 0.12));
+
+  // 围墙：正 +Z 面留大门缺口
+  const wallH = 0.42 + (tier - 1) * 0.12;
+  const wallY = 0.24 + wallH / 2;
+  g.add(mesh(new THREE.BoxGeometry(1.9, wallH, 0.14), wallColor, 0, wallY, -0.85));
+  g.add(mesh(new THREE.BoxGeometry(0.14, wallH, 1.7), wallColor, -0.88, wallY, 0));
+  g.add(mesh(new THREE.BoxGeometry(0.14, wallH, 1.7), wallColor, 0.88, wallY, 0));
+  g.add(mesh(new THREE.BoxGeometry(0.55, wallH, 0.14), wallColor, -0.67, wallY, 0.85));
+  g.add(mesh(new THREE.BoxGeometry(0.55, wallH, 0.14), wallColor, 0.67, wallY, 0.85));
+
+  // 主楼
+  const bodyH = 0.95 + (tier - 1) * 0.35;
+  g.add(mesh(new THREE.BoxGeometry(0.95, bodyH, 0.95), wallColor, 0, 0.24 + bodyH / 2, -0.15));
+  g.add(mesh(new THREE.ConeGeometry(0.85, 0.55, 4), roof, 0, 0.24 + bodyH + 0.27, -0.15));
+
+  // 旗（不做摆动，避免和塔位旗混淆）
+  g.add(mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.9, 5), 0x8b5a2b, 0, 0.24 + bodyH + 0.9, -0.15));
+  g.add(mesh(new THREE.BoxGeometry(0.42, 0.26, 0.03), roof, 0.23, 0.24 + bodyH + 1.2, -0.15));
+
+  if (tier === 2) {
+    for (const sx of [-1, 1]) {
+      g.add(
+        mesh(
+          new THREE.CylinderGeometry(0.22, 0.26, wallH + 0.4, 6),
+          wallColor,
+          sx * 0.88,
+          0.24 + (wallH + 0.4) / 2,
+          -0.85,
+        ),
+      );
+      g.add(mesh(new THREE.ConeGeometry(0.3, 0.34, 6), roof, sx * 0.88, 0.24 + wallH + 0.6, -0.85));
+    }
+  }
+  return g;
 }
 
 // ---------- 植被（Bad North 风球状灌木丛） ----------

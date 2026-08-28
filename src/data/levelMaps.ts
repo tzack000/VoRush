@@ -1,5 +1,5 @@
 import { DEFAULT_ISLAND_SHAPE, type IslandShape } from '../world/coords';
-import { mulberry32 } from '../world/models';
+import { mulberry32 } from './rng';
 
 /** 2D 逻辑坐标（1280×720），与 toWorld 的映射口径一致 */
 export type Pt2 = readonly [number, number];

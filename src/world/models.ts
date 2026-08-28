@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mulberry32 } from '../data/rng';
 
 /**
  * 低模工厂：全部用 three.js 基础几何体拼装，材质共享、flat shading。
@@ -240,17 +241,6 @@ export function makeBush(seed: number): THREE.Group {
 }
 
 /** 确定性伪随机（mulberry32） */
-export function mulberry32(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 /** 血条：背景 + 前景两个 Sprite（面向固定相机） */
 export function makeHpBar(width = 1.0): { bg: THREE.Sprite; fg: THREE.Sprite } {
   const bg = new THREE.Sprite(

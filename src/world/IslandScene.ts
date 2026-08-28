@@ -3,7 +3,8 @@ import { Tweens } from './Tween';
 import { createIsland, createReflection, createWater, type PathWorld } from './terrain';
 import { islandHeight, setIslandShape, type IslandShape } from './coords';
 import { disposeObject } from './dispose';
-import { makeBush, mulberry32 } from './models';
+import { mulberry32 } from '../data/rng';
+import { makeBush } from './models';
 
 export type FrameCallback = (dtMs: number) => void;
 

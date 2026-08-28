@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LaneBag } from '../src/combat/LaneBag';
-import { mulberry32 } from '../src/world/models';
+import { mulberry32 } from '../src/data/rng';
 
 describe('洗牌袋分路', () => {
   it('单路径关卡恒返回 0', () => {

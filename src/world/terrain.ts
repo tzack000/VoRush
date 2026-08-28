@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { islandHeight } from './coords';
-import { mulberry32 } from './models';
+import { mulberry32 } from '../data/rng';
 
 /** Bad North 风格 pastel 调色板（低饱和、灰调） */
 export const PALETTE = {

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { makeBush, makeFlag, makeSpotRing, mulberry32 } from './models';
+import { mulberry32 } from '../data/rng';
+import { makeBush, makeFlag, makeSpotRing } from './models';
 import type { LandmarkKind } from '../data/mapLayout';
 
 /**

@@ -23,14 +23,14 @@ npm run dev          # 开发服务器
 
 ## 架构不变量（违反会造成静默 bug）
 
-1. **`islandHeight(x,z)` 读模块级"当前岛屿形状"**（`src/world/coords.ts`）。`setIslandShape` 只允许 `IslandScene.buildTerrain()` 首行调用。**进关顺序固定**：`controller.dispose()` → `island.buildTerrain()` → `new LevelController()`。顺序反了实体贴上一关高度——有 `terrainReady` 断言兜底，别绕过它。
+1. **`islandHeight(x,z)` 读模块级"当前岛屿形状"**（`src/world/coords.ts`）。`setIslandShape` 只允许 `IslandScene.buildTerrain()` 调用（clearTerrain 之后、建任何实体之前）。**进关顺序固定**：`controller.dispose()` → `island.buildTerrain()` → `new LevelController()`。顺序反了实体贴上一关高度——有 `terrainReady` 断言兜底，别绕过它。
 2. **共享材质绝不 dispose**。`models.ts` / `mapProps.ts` 的材质缓存带 `userData.shared = true`，`disposeObject`（`src/world/dispose.ts`）会跳过。释放关卡实体一律走 `disposeObject`。
 3. **倒影复用岛屿 geometry**：`clearTerrain` 里先移除倒影并只 dispose 它的材质，geometry 由岛屿侧统一释放，恰好一次。
-4. **两个 scene 一个 renderer**：战斗视图与大地图各持 scene/camera，`IslandScene.setView()` 切换；拾取射线用 `activeCamera`。
+4. **两个 scene 一个 renderer**：战斗视图与大地图各持 scene/camera，`IslandScene.setView()` 切换。拾取各用各的相机：战斗拾取（`RaycastPicker`）固定用战斗相机，地图点岛在 `WorldMap` 内用自己的 raycaster 与地图相机；屏幕投影用 `island.activeCamera`。
 5. **帧回调必须可注销**：`island.onFrame(cb)` 返回 disposer，持有并在 `dispose()` 里调用（否则重玩叠帧）。
 6. **渲染/输入（world、combat）与 UI（ui、DOM）分离**：战斗逻辑是纯 TS 可单测的，视图每帧同步。新逻辑放 `combat/` 或 `data/` 并配 vitest，不要塞进视图类。
 7. **多路径**：`LevelController.lanes` 数组；敌人持有自己的 `Path` 与 `goalId`；分岔/合流 = 折线共享前缀/后缀，**不要**引入运行时分岔概念。塔索敌优先级用 `enemy.remaining`（跨路径可比），不要用 `dist`。
-8. **进度键**：`vorush.clear.<levelId>`（三星结果 JSON）与 `vorush.records.<packId>`，读写统一走 `src/data/progress.ts`，别在别处直接碰 localStorage。
+8. **进度键**：通关键 `vorush.clear.<levelId>`（三星结果 JSON）的读写统一走 `src/data/progress.ts`。学习记录 `vorush.records.<packId>` 由 `WordBook` 自管（键名规范不变），教学引导标记（`TutorialOverlay`）全局共享——除这两处已定型的模块外，**不要**在别处直接碰 localStorage 或发明新键。
 
 ## 数据即源
 

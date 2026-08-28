@@ -1,5 +1,11 @@
 node_modules/
 dist/
 .playwright-cli/
-*.png
 .DS_Store
+
+# 浏览器验证的临时产物（agent-browser 截图/录屏）。
+# *.png 全局排除（现状）；jpg 只排根目录，避免误伤 00_input 的参考资料。
+*.png
+/*.jpg
+/*.jpeg
+*.webm

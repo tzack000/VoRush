@@ -113,7 +113,7 @@ export class Game {
     const cleared = clearedLevelIds();
     this.mapView.mount();
     this.map.show(cleared);
-    if (focus) this.map.frameProgress(cleared, false);
+    if (focus) this.map.frameProgressReveal(cleared);
     this.refreshLabels(cleared);
     // 结算遮罩可能仍开着，保险起见关掉
     if (this.pendingUnlock !== null) {

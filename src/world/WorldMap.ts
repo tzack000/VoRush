@@ -257,28 +257,59 @@ export class WorldMap {
    * 取景到"玩家现在能玩的关卡"：全部已解锁关卡 + 下一个锁定关卡做诱饵。
    * 已解锁关卡永远在画面内，玩家可以直接点任意一个开始；进度越靠后相机越慢慢拉远。
    */
-  frameProgress(cleared: ReadonlySet<string>, animate: boolean): void {
-    const indices = unlockedFrameIndices(this.layout.nodes, cleared);
-    const raw = this.fitView(indices);
-    const fit = { ...raw, ...this.clampPoint(raw.x, raw.z) };
-    if (animate) {
-      const fromX = this.target.x;
-      const fromZ = this.target.y;
-      const fromZoom = this.zoom;
-      Tweens.add({
-        duration: 700,
-        ease: Ease.inOutSine,
-        onUpdate: (t) => {
-          this.target.set(fromX + (fit.x - fromX) * t, fromZ + (fit.z - fromZ) * t);
-          this.zoom = fromZoom + (fit.zoom - fromZoom) * t;
-          this.applyCamera();
-        },
-      });
-    } else {
+  frameProgress(
+    cleared: ReadonlySet<string>,
+    animate: boolean,
+    timing: { delay?: number; duration?: number } = {},
+  ): void {
+    const fit = this.fitFor(cleared);
+    if (!animate) {
       this.target.set(fit.x, fit.z);
       this.zoom = fit.zoom;
       this.applyCamera();
+      return;
     }
+    const fromX = this.target.x;
+    const fromZ = this.target.y;
+    const fromZoom = this.zoom;
+    Tweens.add({
+      duration: timing.duration ?? 700,
+      delay: timing.delay ?? 0,
+      ease: Ease.inOutSine,
+      onUpdate: (t) => {
+        this.target.set(fromX + (fit.x - fromX) * t, fromZ + (fit.z - fromZ) * t);
+        this.zoom = fromZoom + (fit.zoom - fromZoom) * t;
+        this.applyCamera();
+      },
+    });
+  }
+
+  /**
+   * 进入地图的开场镜头：先贴近一点再缓缓拉到取景位。
+   * 取景区会随进度变宽、相机随之拉远，直接切镜头看起来像"地图突然变小"；
+   * 补一段拉远过场后，读起来是镜头主动展开。
+   */
+  frameProgressReveal(cleared: ReadonlySet<string>): void {
+    const fit = this.fitFor(cleared);
+    this.target.set(fit.x, fit.z);
+    this.zoom = fit.zoom * 0.86;
+    this.applyCamera();
+    const fromZoom = this.zoom;
+    Tweens.add({
+      duration: 1000,
+      ease: Ease.inOutSine,
+      onUpdate: (t) => {
+        this.zoom = fromZoom + (fit.zoom - fromZoom) * t;
+        this.applyCamera();
+      },
+    });
+  }
+
+  /** 当前进度对应的取景：目标点（已收敛到地图边界内）与缩放 */
+  private fitFor(cleared: ReadonlySet<string>): { x: number; z: number; zoom: number } {
+    const indices = unlockedFrameIndices(this.layout.nodes, cleared);
+    const raw = this.fitView(indices);
+    return { ...raw, ...this.clampPoint(raw.x, raw.z) };
   }
 
   /** 把取景点收进地图边界内（含一点余量），避免相机飘到空水域 */
@@ -508,8 +539,8 @@ export class WorldMap {
     const view = this.nodeView(index);
     if (!view) return;
 
-    // 0~700ms 相机取景到"现在能玩的全部关卡"；0~520ms 刚通关的岛弹跳
-    this.frameProgress(clearedLevelIds(), true);
+    // 0~520ms 刚通关的岛先弹跳，350ms 起相机才缓缓拉远——让镜头跟着新航线展开
+    this.frameProgress(clearedLevelIds(), true, { delay: 350, duration: 900 });
     this.bounce(index - 1, 0.8, 520);
 
     // 500ms 起：新航线踏脚石逐颗弹出

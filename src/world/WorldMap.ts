@@ -3,12 +3,13 @@ import { Ease, Tweens } from './Tween';
 import { createMapIsland, createMapReflection, createWater } from './terrain';
 import { makeBanner, makeCurrentRing, makeLandmark, makeLock, makeSteppingStone } from './mapProps';
 import {
-  currentLevelIndex,
   nodeState,
+  unlockedFrameIndices,
   type MapLayout,
   type MapNode,
   type NodeState,
 } from '../data/mapLayout';
+import { clearedLevelIds } from '../data/progress';
 import type { IslandScene } from './IslandScene';
 
 export interface NodeAnchor {
@@ -45,6 +46,8 @@ interface TrailView {
 const GREY = new THREE.Color('#8f968f');
 const NORMAL = new THREE.Color('#ffffff');
 const DRAG_THRESHOLD = 12;
+/** 相机最多拉远到基准距离的几倍（画面塞不下全部已解锁关卡时的上限） */
+const MAX_ZOOM = 2.8;
 
 /**
  * WorldMap：Kingdom Rush 式 3D 大地图。
@@ -57,6 +60,8 @@ export class WorldMap {
   private nodes: NodeView[] = [];
   private trails: TrailView[] = [];
   private target = new THREE.Vector2(0, 0);
+  /** 相机拉远系数：1 为基准，取景需要时才放大 */
+  private zoom = 1;
   private active = false;
   private time = 0;
   private pickables: THREE.Object3D[] = [];
@@ -226,37 +231,168 @@ export class WorldMap {
 
   // ---------- 相机 ----------
 
+  /** 调试用：当前取景状态（iPad 走查时读数） */
+  get targetX(): number {
+    return this.target.x;
+  }
+  get targetZ(): number {
+    return this.target.y;
+  }
+  get zoomLevel(): number {
+    return this.zoom;
+  }
+
   private applyCamera(): void {
+    this.placeCamera(this.target.x, this.target.y, this.zoom);
+  }
+
+  private placeCamera(x: number, z: number, zoom: number): void {
     const { height, distance, lookAtY } = this.layout.camera;
-    this.camera.position.set(this.target.x, height, this.target.y + distance);
-    this.camera.lookAt(this.target.x, lookAtY, this.target.y);
+    this.camera.position.set(x, height * zoom, z + distance * zoom);
+    this.camera.lookAt(x, lookAtY, z);
+    this.camera.updateMatrixWorld(true);
   }
 
-  /** 平移到指定关卡（tween） */
-  panTo(index: number, duration = 600): void {
-    const view = this.nodeView(index);
-    if (!view) return;
-    const fromX = this.target.x;
-    const fromZ = this.target.y;
-    const toX = view.node.x;
-    const toZ = view.node.z;
-    Tweens.add({
-      duration,
-      ease: Ease.inOutSine,
-      onUpdate: (t) => {
-        this.target.set(fromX + (toX - fromX) * t, fromZ + (toZ - fromZ) * t);
-        this.applyCamera();
-      },
-    });
+  /**
+   * 取景到"玩家现在能玩的关卡"：全部已解锁关卡 + 下一个锁定关卡做诱饵。
+   * 已解锁关卡永远在画面内，玩家可以直接点任意一个开始；进度越靠后相机越慢慢拉远。
+   */
+  frameProgress(cleared: ReadonlySet<string>, animate: boolean): void {
+    const indices = unlockedFrameIndices(this.layout.nodes, cleared);
+    const raw = this.fitView(indices);
+    const fit = { ...raw, ...this.clampPoint(raw.x, raw.z) };
+    if (animate) {
+      const fromX = this.target.x;
+      const fromZ = this.target.y;
+      const fromZoom = this.zoom;
+      Tweens.add({
+        duration: 700,
+        ease: Ease.inOutSine,
+        onUpdate: (t) => {
+          this.target.set(fromX + (fit.x - fromX) * t, fromZ + (fit.z - fromZ) * t);
+          this.zoom = fromZoom + (fit.zoom - fromZoom) * t;
+          this.applyCamera();
+        },
+      });
+    } else {
+      this.target.set(fit.x, fit.z);
+      this.zoom = fit.zoom;
+      this.applyCamera();
+    }
   }
 
-  /** 对准当前该玩的关卡（无动画） */
-  focusCurrent(cleared: ReadonlySet<string>): void {
-    const index = currentLevelIndex(this.layout.nodes, cleared);
-    const view = this.nodeView(index);
-    if (!view) return;
-    this.target.set(view.node.x, view.node.z);
-    this.applyCamera();
+  /** 把取景点收进地图边界内（含一点余量），避免相机飘到空水域 */
+  private clampPoint(x: number, z: number): { x: number; z: number } {
+    const b = this.layout.bounds;
+    return {
+      x: Math.min(Math.max(x, b.minX - 8), b.maxX + 8),
+      z: Math.min(Math.max(z, b.minZ - 8), b.maxZ + 8),
+    };
+  }
+
+  /**
+   * 求能框住这些节点的相机目标点与缩放。
+   * 直接用投影试算，不依赖俯角三角公式——换 iPad 比例、改布局或改 fov 都不用重算常数。
+   */
+  private fitView(indices: number[]): { x: number; z: number; zoom: number } {
+    const views = indices
+      .map((i) => this.nodeView(i))
+      .filter((v): v is NodeView => v !== null);
+    if (views.length === 0) return { x: this.target.x, z: this.target.y, zoom: this.zoom };
+
+    // 取样点：每座岛的东西南北四个边缘（地面高度）
+    const probes: Array<{ x: number; z: number }> = [];
+    let minX = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let minZ = Number.POSITIVE_INFINITY;
+    let maxZ = Number.NEGATIVE_INFINITY;
+    for (const v of views) {
+      const r = v.node.radius;
+      probes.push(
+        { x: v.node.x - r, z: v.node.z },
+        { x: v.node.x + r, z: v.node.z },
+        { x: v.node.x, z: v.node.z - r },
+        { x: v.node.x, z: v.node.z + r },
+      );
+      minX = Math.min(minX, v.node.x - r);
+      maxX = Math.max(maxX, v.node.x + r);
+      minZ = Math.min(minZ, v.node.z - r);
+      maxZ = Math.max(maxZ, v.node.z + r);
+    }
+    const center = { x: (minX + maxX) / 2, z: (minZ + maxZ) / 2 };
+
+    // 从最贴近的缩放开始试，拉远到刚好全部进入安全框
+    for (let k = 1; k <= MAX_ZOOM + 1e-6; k += 0.05) {
+      const at = this.centeredTarget(probes, center, k);
+      if (this.fitsAt(probes, at, k)) return { x: at.x, z: at.z, zoom: k };
+    }
+    const last = this.centeredTarget(probes, center, MAX_ZOOM);
+    return { x: last.x, z: last.z, zoom: MAX_ZOOM };
+  }
+
+  /**
+   * 求"让这批点在画面上居中"的相机目标点。
+   * 斜俯视 + 透视会让地面区域在画面上偏上且近大远小，所以按投影后的实际包围盒迭代修正。
+   */
+  private centeredTarget(
+    probes: Array<{ x: number; z: number }>,
+    origin: { x: number; z: number },
+    zoom: number,
+  ): { x: number; z: number } {
+    let x = origin.x;
+    let z = origin.z;
+    for (let i = 0; i < 3; i++) {
+      this.placeCamera(x, z, zoom);
+      const box = this.screenBox(probes);
+      const p0 = this.projectGround(origin.x, origin.z);
+      const kx = this.projectGround(origin.x + 1, origin.z).u - p0.u;
+      const kz = this.projectGround(origin.x, origin.z + 1).v - p0.v;
+      if (Math.abs(kx) < 1e-6 || Math.abs(kz) < 1e-6) break;
+      x += ((box.uMin + box.uMax) / 2 - 0.5) / kx;
+      z += ((box.vMin + box.vMax) / 2 - 0.52) / kz;
+    }
+    return { x, z };
+  }
+
+  /** 这批点投影后的屏幕包围盒（归一化坐标） */
+  private screenBox(probes: Array<{ x: number; z: number }>): {
+    uMin: number;
+    uMax: number;
+    vMin: number;
+    vMax: number;
+  } {
+    let uMin = 1;
+    let uMax = 0;
+    let vMin = 1;
+    let vMax = 0;
+    for (const p of probes) {
+      const s = this.projectGround(p.x, p.z);
+      uMin = Math.min(uMin, s.u);
+      uMax = Math.max(uMax, s.u);
+      vMin = Math.min(vMin, s.v);
+      vMax = Math.max(vMax, s.v);
+    }
+    return { uMin, uMax, vMin, vMax };
+  }
+
+  /** 在给定缩放下，这些点是否都落在安全框内（留出边距，避开顶部标题与底部留白） */
+  private fitsAt(
+    probes: Array<{ x: number; z: number }>,
+    center: { x: number; z: number },
+    zoom: number,
+  ): boolean {
+    this.placeCamera(center.x, center.z, zoom);
+    for (const p of probes) {
+      const s = this.projectGround(p.x, p.z);
+      if (s.u < 0.08 || s.u > 0.92 || s.v < 0.16 || s.v > 0.84) return false;
+    }
+    return true;
+  }
+
+  /** 地面点 → 归一化屏幕坐标（u: 0 左 → 1 右；v: 0 上 → 1 下） */
+  private projectGround(x: number, z: number): { u: number; v: number } {
+    const v3 = new THREE.Vector3(x, this.layout.camera.lookAtY, z).project(this.camera);
+    return { u: (v3.x + 1) / 2, v: (1 - v3.y) / 2 };
   }
 
   private clampTarget(): void {
@@ -293,7 +429,8 @@ export class WorldMap {
       this.drag.lastX = e.clientX;
       this.drag.lastY = e.clientY;
       const rect = el.getBoundingClientRect();
-      const camDist = Math.hypot(this.layout.camera.height, this.layout.camera.distance);
+      const camDist =
+        Math.hypot(this.layout.camera.height, this.layout.camera.distance) * this.zoom;
       const visibleWidth =
         2 * camDist * Math.tan((this.layout.camera.fov * Math.PI) / 360) * this.camera.aspect;
       const perPixel = visibleWidth / rect.width;
@@ -364,15 +501,15 @@ export class WorldMap {
   }
 
   /**
-   * 解锁动画：相机平移 → 新航线踏脚石逐颗弹出 → 新岛上色、锁消失 → 地标长出 → 弹跳。
-   * index 为新解锁的关卡序号。
+   * 解锁动画：相机重新取景（把新解锁的关卡纳入画面）→ 新航线踏脚石逐颗弹出
+   * → 新岛上色、锁消失 → 地标长出 → 弹跳。index 为新解锁的关卡序号。
    */
   playUnlock(index: number): void {
     const view = this.nodeView(index);
     if (!view) return;
 
-    // 0~600ms 相机平移到新关；0~520ms 刚通关的岛弹跳
-    this.panTo(index, 600);
+    // 0~700ms 相机取景到"现在能玩的全部关卡"；0~520ms 刚通关的岛弹跳
+    this.frameProgress(clearedLevelIds(), true);
     this.bounce(index - 1, 0.8, 520);
 
     // 500ms 起：新航线踏脚石逐颗弹出

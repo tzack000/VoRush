@@ -206,3 +206,19 @@ export function nodeState(
   if (cleared.has(node.levelId)) return 'cleared';
   return isLevelUnlocked(index, cleared) ? 'current' : 'locked';
 }
+
+/**
+ * 进入地图时需要取景的节点：全部已解锁关卡（已通关 + 当前关），
+ * 外加紧随其后的第一个锁定关卡做诱饵，让玩家看得到"下一站在哪"。
+ */
+export function unlockedFrameIndices(
+  nodes: MapNode[],
+  cleared: ReadonlySet<string>,
+): number[] {
+  const out: number[] = [];
+  for (const node of nodes) {
+    out.push(node.index);
+    if (nodeState(nodes, node.index, cleared) === 'locked') break;
+  }
+  return out;
+}

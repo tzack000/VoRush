@@ -8,6 +8,7 @@ import {
   layoutBounds,
   newlyUnlocked,
   nodeState,
+  unlockedFrameIndices,
   type MapNode,
 } from '../src/data/mapLayout';
 
@@ -112,5 +113,30 @@ describe('进度状态', () => {
     const after = idsUpTo(2);
     expect(newlyUnlocked(layout.nodes, before, after)).toEqual([2]);
     expect(newlyUnlocked(layout.nodes, after, after)).toEqual([]);
+  });
+
+  it('unlockedFrameIndices：框住全部已解锁关卡，外加下一关做诱饵', () => {
+    // 一关未通：只取景第 1 关 + 第 2 关诱饵
+    expect(unlockedFrameIndices(layout.nodes, new Set())).toEqual([1, 2]);
+    // 通关前两关：1、2 已通关 + 3 当前 + 4 诱饵
+    expect(unlockedFrameIndices(layout.nodes, idsUpTo(2))).toEqual([1, 2, 3, 4]);
+    // 全通：没有可诱饵的锁定关了
+    expect(unlockedFrameIndices(layout.nodes, idsUpTo(LEVELS.length))).toEqual(
+      layout.nodes.map((n) => n.index),
+    );
+  });
+
+  it('unlockedFrameIndices：结果里不含任何跳过的锁定关卡', () => {
+    for (let n = 0; n <= LEVELS.length; n++) {
+      const indices = unlockedFrameIndices(layout.nodes, idsUpTo(n));
+      const locked = indices.filter((i) => nodeState(layout.nodes, i, idsUpTo(n)) === 'locked');
+      // 最多一个诱饵，且必须是最后一个
+      expect(locked.length).toBeLessThanOrEqual(1);
+      if (locked.length === 1) expect(locked[0]).toBe(indices[indices.length - 1]);
+      // 已解锁的关卡一个都不能少
+      for (let i = 1; i <= Math.max(1, n + 1) && i <= LEVELS.length; i++) {
+        expect(indices).toContain(i);
+      }
+    }
   });
 });

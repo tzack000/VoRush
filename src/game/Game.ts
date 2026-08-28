@@ -62,6 +62,7 @@ export class Game {
       },
       mapLevels: () =>
         this.layout.nodes.map((n) => ({ index: n.index, packId: n.packId, x: n.x, z: n.z })),
+      mapCamera: () => ({ x: this.map.targetX, z: this.map.targetZ, zoom: this.map.zoomLevel }),
     };
 
     this.showStartOverlay(uiRoot, () => this.enterMap(true));
@@ -102,14 +103,17 @@ export class Game {
 
   // ---------- 大地图 ----------
 
-  /** 进入大地图；focus=true 时把相机对准当前该玩的关卡 */
+  /**
+   * 进入大地图；focus=true 时把相机取景到"现在能玩的全部关卡"，
+   * 让玩家直接看到每一个已解锁的岛屿并任选一个开始。
+   */
   private enterMap(focus: boolean): void {
     this.controller?.dispose();
     this.controller = null;
     const cleared = clearedLevelIds();
     this.mapView.mount();
     this.map.show(cleared);
-    if (focus) this.map.focusCurrent(cleared);
+    if (focus) this.map.frameProgress(cleared, false);
     this.refreshLabels(cleared);
     // 结算遮罩可能仍开着，保险起见关掉
     if (this.pendingUnlock !== null) {

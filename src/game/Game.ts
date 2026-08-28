@@ -1,23 +1,33 @@
 import { unlockAudio } from '../audio/sfx';
 import { PATH_POINTS, TOWER_SPOTS } from '../data/level';
-import type { LevelDef } from '../data/levels';
+import { LEVELS, type LevelDef } from '../data/levels';
+import { clearedLevelIds, readClear, starCount } from '../data/progress';
+import { buildMapLayout, newlyUnlocked, nodeState } from '../data/mapLayout';
 import { WordAudio } from '../quiz/WordAudio';
 import { el, makeButton } from '../ui/dom';
-import { PackSelectView } from '../ui/PackSelectView';
+import type { MapNodeStatus } from '../ui/WorldMapView';
+import { WorldMapView } from '../ui/WorldMapView';
 import { toWorld, islandHeight } from '../world/coords';
 import { IslandScene } from '../world/IslandScene';
 import { RaycastPicker } from '../world/RaycastPicker';
+import { WorldMap } from '../world/WorldMap';
+import { Tweens } from '../world/Tween';
 import { Vector3 } from 'three';
 import { LevelController } from './LevelController';
 
 /**
  * Game：组装渲染层、拾取层与流程编排。
- * 流程：开始界面（解锁音频）→ 词包选择 → LevelController(pack)
- * → 结算后重玩本包或返回词包选择。
+ * 流程：开始界面（解锁音频）→ 3D 大地图 → LevelController(level)
+ * → 结算后重玩本关或返回大地图（新解锁则播放解锁动画）。
  */
 export class Game {
   private controller: LevelController | null = null;
-  private packSelect: PackSelectView;
+  private map: WorldMap;
+  private mapView: WorldMapView;
+  private layout = buildMapLayout();
+  /** 进入单局前的通关集合，用于结算回来时判断新解锁 */
+  private clearedBefore: ReadonlySet<string> = new Set();
+  private pendingUnlock: number | null = null;
 
   constructor(container: HTMLElement) {
     // DOM UI 覆盖层
@@ -32,15 +42,15 @@ export class Game {
     // 音频预载
     WordAudio.init();
 
-    // 拾取 → 控制器
+    // 拾取 → 控制器（地图模式下停用，地图自带点击处理）
     const picker = new RaycastPicker(island.camera, island.renderer.domElement, (id) =>
       this.controller?.onPick(id),
     );
 
-    this.packSelect = new PackSelectView(uiRoot, (level) => {
-      this.packSelect.hide();
-      this.startLevel(island, picker, uiRoot, level);
-    });
+    this.mapView = new WorldMapView(uiRoot, (level) => this.startLevel(island, picker, uiRoot, level));
+    this.map = new WorldMap(island, island.renderer.domElement, this.layout, (index) =>
+      this.onTapNode(index),
+    );
 
     // 测试辅助：暴露塔位屏幕坐标（自动化冒烟用）
     (window as unknown as Record<string, unknown>).__vorush = {
@@ -50,9 +60,11 @@ export class Game {
         const world = new Vector3(x, islandHeight(x, z), z);
         return island.projectToScreen(world);
       },
+      mapLevels: () =>
+        this.layout.nodes.map((n) => ({ index: n.index, packId: n.packId, x: n.x, z: n.z })),
     };
 
-    this.showStartOverlay(uiRoot, () => this.packSelect.show());
+    this.showStartOverlay(uiRoot, () => this.enterMap(true));
 
     // 调试面板（?debug=1）：FPS + 单局计时，供真机走查读数
     if (new URLSearchParams(location.search).get('debug') === '1') {
@@ -60,6 +72,10 @@ export class Game {
     }
 
     island.start();
+    // 地图标签每帧跟随岛屿屏幕坐标
+    island.onFrame(() => {
+      this.mapView.updateLabels(this.map.anchors());
+    });
   }
 
   private showStartOverlay(uiRoot: HTMLElement, onStart: () => void): void {
@@ -84,22 +100,88 @@ export class Game {
     uiRoot.append(dim);
   }
 
+  // ---------- 大地图 ----------
+
+  /** 进入大地图；focus=true 时把相机对准当前该玩的关卡 */
+  private enterMap(focus: boolean): void {
+    this.controller?.dispose();
+    this.controller = null;
+    const cleared = clearedLevelIds();
+    this.mapView.mount();
+    this.map.show(cleared);
+    if (focus) this.map.focusCurrent(cleared);
+    this.refreshLabels(cleared);
+    // 结算遮罩可能仍开着，保险起见关掉
+    if (this.pendingUnlock !== null) {
+      const index = this.pendingUnlock;
+      this.pendingUnlock = null;
+      this.map.playUnlock(index);
+      this.mapView.popStars(index - 1);
+      this.mapView.toast('新关卡解锁！');
+    }
+  }
+
+  private refreshLabels(cleared: ReadonlySet<string>): void {
+    const statuses: MapNodeStatus[] = this.layout.nodes.map((node) => ({
+      index: node.index,
+      state: nodeState(this.layout.nodes, node.index, cleared),
+      stars: starCount(readClear(node.levelId)),
+    }));
+    this.mapView.refreshStates(statuses);
+  }
+
+  private onTapNode(index: number): void {
+    const levelDef = this.levelDef(index);
+    const cleared = clearedLevelIds();
+    const state = nodeState(this.layout.nodes, index, cleared);
+    if (state === 'locked') {
+      this.map.shakeLock(index);
+      this.mapView.toast(`先通过第 ${index - 1} 关吧！`);
+    } else {
+      this.map.bounce(index, 0.35, 320);
+    }
+    this.mapView.showCard(levelDef, state, starCount(readClear(levelDef.id)));
+  }
+
+  /** 地图节点序号 → 关卡定义（词包与难度缩放都在里面） */
+  private levelDef(index: number): LevelDef {
+    const level = LEVELS[index - 1];
+    if (!level) throw new Error(`unknown level: ${index}`);
+    return level;
+  }
+
+  // ---------- 单局 ----------
+
   private startLevel(
     island: IslandScene,
     picker: RaycastPicker,
     uiRoot: HTMLElement,
     level: LevelDef,
   ): void {
+    this.clearedBefore = clearedLevelIds();
+    this.mapView.hideCard();
+    this.map.hide();
+    this.mapView.destroy();
+    picker.enabled = true;
+    picker.clear();
+    Tweens.killAll();
+    island.setView(null, null);
     this.controller?.dispose();
     this.controller = new LevelController(island, picker, uiRoot, level, {
       onReplay: () => this.startLevel(island, picker, uiRoot, level),
-      onExit: () => {
-        this.controller?.dispose();
-        this.controller = null;
-        this.packSelect.show();
-      },
+      onExit: () => this.onLevelExit(level),
     });
     this.controller.begin();
+  }
+
+  private onLevelExit(level: LevelDef): void {
+    const after = clearedLevelIds();
+    const justCleared = after.has(level.id) && !this.clearedBefore.has(level.id);
+    const unlocked = justCleared ? newlyUnlocked(this.layout.nodes, this.clearedBefore, after) : [];
+    this.pendingUnlock = unlocked.length > 0 ? unlocked[0] : null;
+    this.controller?.dispose();
+    this.controller = null;
+    this.enterMap(false);
   }
 
   private setupDebugHud(island: IslandScene, uiRoot: HTMLElement): void {

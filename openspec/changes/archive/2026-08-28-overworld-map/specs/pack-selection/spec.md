@@ -2,9 +2,9 @@
 
 ## Purpose
 
-本规格由 change `school-word-packs`、`leveled-word-packs`、`overworld-map` 同步而来，描述关卡/词包选择与记录隔离的系统行为。
+本规格由 change `school-word-packs`、`leveled-word-packs` 同步而来，描述关卡/词包选择与记录隔离的系统行为。
 
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: 关卡选择界面
 
@@ -33,12 +33,3 @@
 
 - **WHEN** 结算界面点击返回地图按钮
 - **THEN** 回到大地图，结算面板移除，各岛屿显示最新星星数与解锁状态；若本局是新解锁则播放解锁动画
-
-### Requirement: 学习记录按包隔离
-
-每个词包的学习记录 SHALL 使用独立的持久化键（含包 id），互不影响；教学引导标记全局共享。
-
-#### Scenario: 记录隔离
-
-- **WHEN** 玩家在动物包答对 cat 后切换到 T1D1 包所在关卡
-- **THEN** T1D1 包的学习记录不含 cat 的答题历史，动物包记录保持完整

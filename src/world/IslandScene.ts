@@ -29,11 +29,16 @@ function distToSeg(
  */
 export class IslandScene {
   readonly renderer: THREE.WebGLRenderer;
+  /** 战斗视图（LevelController 直接操作 scene） */
   readonly scene: THREE.Scene;
   readonly camera: THREE.PerspectiveCamera;
   private callbacks: FrameCallback[] = [];
   private clock = new THREE.Clock();
   private running = false;
+  /** 全部相机（战斗 + 地图），resize 时统一更新 aspect */
+  private views: THREE.PerspectiveCamera[] = [];
+  /** 当前渲染视图，默认为战斗视图 */
+  private view: { scene: THREE.Scene; camera: THREE.PerspectiveCamera } | null = null;
 
   constructor(container: HTMLElement, pathWorld: Array<{ x: number; z: number }>) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -54,6 +59,7 @@ export class IslandScene {
     // 低角度斜俯视：露出悬崖立面与植被/塔的高度，强化 3D 微缩感
     this.camera.position.set(0, 30, 56);
     this.camera.lookAt(0, 2.4, -1);
+    this.views.push(this.camera);
 
     // 柔和光照：灰调半球光 + 低强度暖色平行光（阴天的柔光），无阴影贴图
     const hemi = new THREE.HemisphereLight(0xd5dedd, 0xa8b39a, 1.1);
@@ -103,13 +109,38 @@ export class IslandScene {
   private onResize(container: HTMLElement): void {
     const w = container.clientWidth;
     const h = container.clientHeight;
-    this.camera.aspect = w / h;
-    this.camera.updateProjectionMatrix();
+    for (const cam of this.views) {
+      cam.aspect = w / h;
+      cam.updateProjectionMatrix();
+    }
     this.renderer.setSize(w, h);
   }
 
-  onFrame(cb: FrameCallback): void {
+  /** 登记额外相机（如地图相机），与战斗相机同步 aspect */
+  registerCamera(camera: THREE.PerspectiveCamera): void {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    camera.aspect = rect.width / rect.height;
+    camera.updateProjectionMatrix();
+    this.views.push(camera);
+  }
+
+  /** 切换渲染视图；传 null 回到战斗视图 */
+  setView(scene: THREE.Scene | null, camera: THREE.PerspectiveCamera | null): void {
+    this.view = scene && camera ? { scene, camera } : null;
+  }
+
+  get activeCamera(): THREE.PerspectiveCamera {
+    return this.view?.camera ?? this.camera;
+  }
+
+  /** 注册每帧回调，返回取消注册的函数 */
+  onFrame(cb: FrameCallback): () => void {
     this.callbacks.push(cb);
+    return () => this.offFrame(cb);
+  }
+
+  offFrame(cb: FrameCallback): void {
+    this.callbacks = this.callbacks.filter((c) => c !== cb);
   }
 
   start(): void {
@@ -120,13 +151,15 @@ export class IslandScene {
       const dtMs = Math.min(100, this.clock.getDelta() * 1000);
       Tweens.update(dtMs);
       for (const cb of this.callbacks) cb(dtMs);
-      this.renderer.render(this.scene, this.camera);
+      const view = this.view;
+      if (view) this.renderer.render(view.scene, view.camera);
+      else this.renderer.render(this.scene, this.camera);
     });
   }
 
-  /** 世界坐标 → 屏幕像素（供 DOM 教学高亮定位） */
+  /** 世界坐标 → 屏幕像素（供 DOM 教学高亮/地图标签定位） */
   projectToScreen(world: THREE.Vector3): { x: number; y: number } {
-    const v = world.clone().project(this.camera);
+    const v = world.clone().project(this.activeCamera);
     const rect = this.renderer.domElement.getBoundingClientRect();
     return {
       x: rect.left + ((v.x + 1) / 2) * rect.width,

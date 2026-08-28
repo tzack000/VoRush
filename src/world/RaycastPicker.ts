@@ -12,15 +12,17 @@ export interface PickTarget {
  */
 export class RaycastPicker {
   enabled = true;
+  private camera: THREE.Camera;
   private raycaster = new THREE.Raycaster();
   private pointer = new THREE.Vector2();
   private targets = new Map<string, PickTarget>();
 
   constructor(
-    private camera: THREE.Camera,
+    camera: THREE.Camera,
     domElement: HTMLElement,
     private onPick: (id: string) => void,
   ) {
+    this.camera = camera;
     domElement.addEventListener('pointerdown', (e) => {
       if (!this.enabled || this.targets.size === 0) return;
       const rect = domElement.getBoundingClientRect();

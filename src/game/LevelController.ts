@@ -7,6 +7,7 @@ import { Path } from '../combat/Path';
 import { WaveSpawner } from '../combat/WaveSpawner';
 import { ECONOMY } from '../data/economy';
 import { PATH_POINTS, TOWER_SPOTS } from '../data/level';
+import { writeClear } from '../data/progress';
 import { ARCHER_TOWER, KNIGHT_CAMP, type TowerDefBase } from '../data/towers';
 import { ENEMY_DEFS, EXIT_LIVES, WAVES, type EnemyDef } from '../data/waves';
 import { getPack, type WordPack } from '../data/words';
@@ -48,10 +49,6 @@ const LEGACY_BOOK_KEY = 'vorush.level1-1.records';
 
 function bookKey(packId: string): string {
   return `vorush.records.${packId}`;
-}
-
-function clearKey(packId: string): string {
-  return `vorush.clear.${packId}`;
 }
 
 type Tower = ArcherTower | KnightCamp;
@@ -100,6 +97,8 @@ export class LevelController {
   private buildBar: HTMLElement | null = null;
   private phaseButton: HTMLButtonElement | null = null;
   private buildPopup: BuildPopup;
+  /** 取消注册帧回调（销毁时调用，避免重玩累积） */
+  private stopFrame: () => void = () => {};
   private pack: WordPack;
   private tutorialStep = 0;
 
@@ -126,7 +125,7 @@ export class LevelController {
 
     this.createSpotFlags();
     this.refreshHud('');
-    island.onFrame((dt) => this.update(dt));
+    this.stopFrame = island.onFrame((dt) => this.update(dt));
   }
 
   private get wordIds(): string[] {
@@ -198,9 +197,11 @@ export class LevelController {
     this.spotDiscs = [];
     this.picker.clear();
     Tweens.killAll();
+    this.stopFrame();
     this.quiz.close();
     this.tutorial.clear();
     this.buildPopup.close();
+    this.resultView.close();
     this.buildBar?.remove();
     this.hud.root.remove();
   }
@@ -641,12 +642,8 @@ export class LevelController {
     window.dispatchEvent(new Event('vorush-session-end'));
     const stars = computeStars(true, this.book, this.wordIds);
     this.saveBook();
-    // 通关标记：词包选择界面展示星星
-    try {
-      globalThis.localStorage?.setItem(clearKey(this.pack.id), JSON.stringify(stars));
-    } catch {
-      // 忽略
-    }
+    // 通关标记：大地图展示星星与解锁下一关
+    writeClear(this.level.id, stars);
     this.resultView.showVictory(
       stars,
       () => this.hooks.onReplay(),

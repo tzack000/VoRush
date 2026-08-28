@@ -147,6 +147,24 @@ export const WORD_PACKS: WordPack[] = [
       w('fun', '🎉'),
     ],
   },
+  {
+    id: 't3d2',
+    name: 'T3 默书 2 · 宠物朋友',
+    emoji: '🐹',
+    words: [
+      w('goldfish', '🐠'),
+      w('hamster', '🐹'),
+      w('parrot', '🦜'),
+      w('rabbit', '🐰'),
+      w('run', '🏃‍♂️'),
+      w('talk', '🗣️'),
+      w('date', '📅'),
+      w('dish', '🍽️'),
+      w('doctor', '👨‍⚕️'),
+      w('door', '🚪'),
+      w('dress', '👗'),
+    ],
+  },
 ];
 
 export function getPack(packId: string): WordPack {

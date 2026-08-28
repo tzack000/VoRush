@@ -36,6 +36,7 @@ const PACK_ORDER = [
   't2d2',
   't2d3',
   't3d1',
+  't3d2',
 ] as const;
 
 /** 有序关卡：第 N 关绑定词包 PACK_ORDER[N-1]，难度随序号递增 */

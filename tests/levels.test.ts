@@ -9,10 +9,11 @@ import {
 import { ENEMY_DEFS, WAVES } from '../src/data/waves';
 
 describe('关卡序列', () => {
-  it('8 个有序关卡，第 1 关为动物伙伴教学关', () => {
-    expect(LEVELS).toHaveLength(8);
+  it('9 个有序关卡，第 1 关为动物伙伴教学关', () => {
+    expect(LEVELS).toHaveLength(9);
     expect(getLevel(1).packId).toBe('animals-1');
     expect(getLevel(8).packId).toBe('t3d1');
+    expect(getLevel(9).packId).toBe('t3d2');
   });
 
   it('第 1 关缩放恒等（基础数值）', () => {

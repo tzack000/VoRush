@@ -42,6 +42,22 @@ describe('词库完整性', () => {
     expect(getPack('t2d3').words.map((x) => x.id)).not.toContain('eleven peaches');
   });
 
+  it('T3D2 宠物词表与 PDF 一致（核心词提取）', () => {
+    expect(getPack('t3d2').words.map((x) => x.id)).toEqual([
+      'goldfish',
+      'hamster',
+      'parrot',
+      'rabbit',
+      'run',
+      'talk',
+      'date',
+      'dish',
+      'doctor',
+      'door',
+      'dress',
+    ]);
+  });
+
   it('getPack / getWordIn 对未知 id 抛错', () => {
     expect(() => getPack('nope')).toThrow();
     expect(() => getWordIn(getPack('animals-1'), 'nope')).toThrow();

@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { clearedLevelIds, clearKey, readClear, starCount, writeClear } from '../src/data/progress';
+import {
+  clearedLevelIds,
+  clearKey,
+  markReviewComplete,
+  readClear,
+  readReview,
+  REVIEW_KEY,
+  starCount,
+  writeClear,
+} from '../src/data/progress';
 import type { ProgressStorage } from '../src/data/progress';
 
 function fakeStorage(seed: Record<string, string> = {}): ProgressStorage & { data: Record<string, string> } {
@@ -44,5 +53,26 @@ describe('通关进度读写', () => {
     writeClear('t1d1', { clear: false, know: true, review: true }, s);
     const ids = clearedLevelIds(s);
     expect([...ids]).toEqual(['animals-1']);
+  });
+});
+
+describe('复习巡逻进度', () => {
+  it('键名为 vorush.review', () => {
+    expect(REVIEW_KEY).toBe('vorush.review');
+  });
+
+  it('缺失或坏数据回退为 0 次', () => {
+    expect(readReview(fakeStorage())).toEqual({ completedCount: 0, lastCompletedAt: 0 });
+    expect(readReview(fakeStorage({ [REVIEW_KEY]: '{坏' }))).toEqual({
+      completedCount: 0,
+      lastCompletedAt: 0,
+    });
+  });
+
+  it('完成两次后次数为 2 并更新时间', () => {
+    const s = fakeStorage();
+    expect(markReviewComplete(1000, s)).toEqual({ completedCount: 1, lastCompletedAt: 1000 });
+    expect(markReviewComplete(2000, s)).toEqual({ completedCount: 2, lastCompletedAt: 2000 });
+    expect(readReview(s)).toEqual({ completedCount: 2, lastCompletedAt: 2000 });
   });
 });

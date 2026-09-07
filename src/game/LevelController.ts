@@ -17,7 +17,7 @@ import { GoldWallet } from '../economy/GoldWallet';
 import { SupplyCrate } from '../events/SupplyCrate';
 import { pickPracticeWords, pickTypeFor } from '../learning/QuestionSelector';
 import { computeStars } from '../learning/StarRating';
-import { WordBook } from '../learning/WordBook';
+import { bookKey, WordBook } from '../learning/WordBook';
 import { generateQuestion } from '../quiz/questionGenerator';
 import { QuizOverlay } from '../quiz/QuizOverlay';
 import { WordAudio } from '../quiz/WordAudio';
@@ -49,10 +49,6 @@ import type { RaycastPicker } from '../world/RaycastPicker';
 import { Tweens, Ease } from '../world/Tween';
 
 const LEGACY_BOOK_KEY = 'vorush.level1-1.records';
-
-function bookKey(packId: string): string {
-  return `vorush.records.${packId}`;
-}
 
 type Tower = ArcherTower | KnightCamp;
 

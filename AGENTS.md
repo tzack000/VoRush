@@ -12,7 +12,7 @@ VoRush：给**小学一、二年级孩子**的"学习优先"英语单词塔防�
 
 ```bash
 npx tsc --noEmit     # 类型检查（改完必跑）
-npx vitest run       # 全量单测（改完必跑，当前 79 例必须保持全绿）
+npx vitest run       # 全量单测（改完必跑，当前 96 例必须保持全绿）
 npm run build        # tsc + vite build
 npm run dev          # 开发服务器
 ```
@@ -30,7 +30,7 @@ npm run dev          # 开发服务器
 5. **帧回调必须可注销**：`island.onFrame(cb)` 返回 disposer，持有并在 `dispose()` 里调用（否则重玩叠帧）。
 6. **渲染/输入（world、combat）与 UI（ui、DOM）分离**：战斗逻辑是纯 TS 可单测的，视图每帧同步。新逻辑放 `combat/` 或 `data/` 并配 vitest，不要塞进视图类。
 7. **多路径**：`LevelController.lanes` 数组；敌人持有自己的 `Path` 与 `goalId`；分岔/合流 = 折线共享前缀/后缀，**不要**引入运行时分岔概念。塔索敌优先级用 `enemy.remaining`（跨路径可比），不要用 `dist`。
-8. **进度键**：通关键 `vorush.clear.<levelId>`（三星结果 JSON）的读写统一走 `src/data/progress.ts`。学习记录 `vorush.records.<packId>` 由 `WordBook` 自管（键名规范不变），教学引导标记（`TutorialOverlay`）全局共享——除这两处已定型的模块外，**不要**在别处直接碰 localStorage 或发明新键。
+8. **进度键**：通关键 `vorush.clear.<levelId>`（三星结果 JSON）与复习巡逻元数据 `vorush.review` 的读写统一走 `src/data/progress.ts`。学习记录 `vorush.records.<packId>` 由 `WordBook` 自管（键名用导出的 `bookKey`，含成长字段 `strength` / `lastReviewedAt`），教学引导标记（`TutorialOverlay`）全局共享——除这两处已定型的模块外，**不要**在别处直接碰 localStorage 或发明新键。
 
 ## 数据即源
 
@@ -50,7 +50,7 @@ openspec/changes/<name>/  proposal.md + design.md + tasks.md + specs/<capability
 2. 实现、验证、勾完 tasks。
 3. 把 delta **手动同步**到 `openspec/specs/` 主规格（`## ADDED/MODIFIED` → 主规格格式，别直接复制 delta 头）。
 4. `mv openspec/changes/<name> openspec/changes/archive/$(date +%Y-%m-%d)-<name>`，随代码一起 commit。
-5. `npx openspec validate --specs` 必须 12 个全过。
+5. `npx openspec validate --specs` 必须 13 个全过。
 
 主规格是行为契约：改行为前先读对应规格（`tower-defense-combat` / `level-terrain` / `world-map` / `level-session`…），改完行为要同步规格。
 
@@ -64,6 +64,6 @@ openspec/changes/<name>/  proposal.md + design.md + tasks.md + specs/<capability
 ## 边界
 
 - 不引入新运行时依赖（three 之外）；不引入外部模型/贴图/字体文件。
-- 不做 P1 范围内容：英雄单位、Boss、魔法塔/炮塔、字母排序玩法（设计文档里的 P1 清单）。
+- 不做其余 P1 范围内容：英雄单位、Boss、魔法塔/炮塔、字母排序玩法。复习巡逻（间隔复习入口）已落地，不要再另起一套存储键。
 - 竖屏只显示"请旋转设备"，不支持；相机固定斜俯视，不做旋转/双指缩放。
 - iPad 性能预算：战斗与大地图不同屏，静态合批/InstancedMesh 已做，新场景对象注意数量。

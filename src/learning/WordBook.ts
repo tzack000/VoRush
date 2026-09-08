@@ -17,6 +17,15 @@ export interface WordRecordData {
   independentTypes: QuestionType[];
   /** 是否曾通过提示引导完成 */
   guided: boolean;
+  /** 间隔复习熟练度 0～3；缺省按已独立答对题型数推断 */
+  strength: number;
+  /** 上次答题/复习时间（ms）；0 表示从未复习 */
+  lastReviewedAt: number;
+}
+
+/** 学习记录键：按词包隔离。关卡与复习巡逻共用，勿在别处拼键。 */
+export function bookKey(packId: string): string {
+  return `vorush.records.${packId}`;
 }
 
 function emptyRecord(): WordRecordData {
@@ -27,7 +36,18 @@ function emptyRecord(): WordRecordData {
     lastWrong: false,
     independentTypes: [],
     guided: false,
+    strength: 0,
+    lastReviewedAt: 0,
   };
+}
+
+function clampStrength(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(3, Math.floor(n)));
+}
+
+function inferStrength(independentTypes: QuestionType[]): number {
+  return clampStrength(independentTypes.length);
 }
 
 function storageGet(key: string): string | null {
@@ -54,7 +74,17 @@ export class WordBook {
     initial?: Record<string, Partial<WordRecordData>>,
   ) {
     for (const id of wordIds) {
-      this.data[id] = { ...emptyRecord(), ...(initial?.[id] ?? {}) };
+      const raw = initial?.[id] ?? {};
+      const merged: WordRecordData = { ...emptyRecord(), ...raw };
+      if (raw.strength === undefined) {
+        merged.strength = inferStrength(merged.independentTypes ?? []);
+      } else {
+        merged.strength = clampStrength(merged.strength);
+      }
+      if (raw.lastReviewedAt === undefined || !Number.isFinite(raw.lastReviewedAt)) {
+        merged.lastReviewedAt = 0;
+      }
+      this.data[id] = merged;
     }
   }
 
@@ -96,17 +126,20 @@ export class WordBook {
     this.rec(id).taught = true;
   }
 
-  recordAnswer(id: string, type: QuestionType, outcome: AnswerOutcome): void {
+  recordAnswer(id: string, type: QuestionType, outcome: AnswerOutcome, now: number = Date.now()): void {
     const r = this.rec(id);
     r.attempts += 1;
+    r.lastReviewedAt = now;
     if (outcome === 'guided') {
       r.guided = true;
       r.wrongs += 1;
       r.lastWrong = true; // 引导完成不算独立掌握，保持优先复现
+      r.strength = 0;
     } else {
       if (!r.independentTypes.includes(type)) r.independentTypes.push(type);
       if (outcome === 'second-try') r.wrongs += 1;
       r.lastWrong = false;
+      r.strength = clampStrength(r.strength + 1);
     }
   }
 
@@ -129,5 +162,19 @@ export class WordBook {
 
   isTaught(id: string): boolean {
     return this.rec(id).taught;
+  }
+
+  /** 战前展示过或有过答题，才算已学 */
+  hasProgress(id: string): boolean {
+    const r = this.rec(id);
+    return r.taught || r.attempts > 0 || r.independentTypes.length > 0;
+  }
+
+  strength(id: string): number {
+    return this.rec(id).strength;
+  }
+
+  lastReviewedAt(id: string): number {
+    return this.rec(id).lastReviewedAt;
   }
 }

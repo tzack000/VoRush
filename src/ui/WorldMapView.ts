@@ -28,10 +28,13 @@ export class WorldMapView {
   private toastEl: HTMLElement | null = null;
   private toastTimer = 0;
   private labels = new Map<number, LabelEntry>();
+  private reviewBtn: HTMLButtonElement | null = null;
+  private reviewBadge: HTMLElement | null = null;
 
   constructor(
     private uiRoot: HTMLElement,
     private onStart: (level: LevelDef) => void,
+    private onReview: () => void,
   ) {}
 
   mount(): void {
@@ -45,9 +48,26 @@ export class WorldMapView {
       labelLayer.append(label);
       this.labels.set(level.index, { root: label, name, stars });
     }
+    const badge = el('span', { className: 'review-btn-badge', text: '' });
+    badge.hidden = true;
+    const reviewBtn = el('button', {
+      className: 'btn btn-orange review-btn',
+      type: 'button',
+    });
+    reviewBtn.append(el('span', { text: '📚 复习' }), badge);
+    reviewBtn.hidden = true;
+    reviewBtn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.onReview();
+    });
+    this.reviewBtn = reviewBtn;
+    this.reviewBadge = badge;
+
     const root = el('div', { id: 'map-ui' }, [
       el('div', { className: 'map-header', text: '选择关卡 🗺️' }),
       labelLayer,
+      reviewBtn,
     ]);
     this.root = root;
     this.uiRoot.append(root);
@@ -58,7 +78,47 @@ export class WorldMapView {
     this.root?.remove();
     this.root = null;
     this.labelLayer = null;
+    this.reviewBtn = null;
+    this.reviewBadge = null;
     this.labels.clear();
+  }
+
+  /** 通关后显示复习按钮；有到期词时亮红点 */
+  setReview(state: { unlocked: boolean; dueCount: number }): void {
+    if (!this.reviewBtn || !this.reviewBadge) return;
+    this.reviewBtn.hidden = !state.unlocked;
+    this.reviewBtn.classList.toggle('due', state.unlocked && state.dueCount > 0);
+    const showBadge = state.unlocked && state.dueCount > 0;
+    this.reviewBadge.hidden = !showBadge;
+    this.reviewBadge.textContent = showBadge ? String(Math.min(state.dueCount, 9)) : '';
+  }
+
+  /** 复习确认卡：确认后才开始巡逻 */
+  showReviewCard(dueCount: number, onStart: () => void): void {
+    this.hideCard();
+    const hint = dueCount > 0 ? `有 ${dueCount} 个单词该复习了` : '再练练已经学过的单词吧';
+    const card = el('div', { className: 'map-card' }, [
+      el('div', { className: 'map-card-title', text: '复习巡逻' }),
+      el('div', { className: 'map-card-emoji', text: '📚' }),
+      el('div', { className: 'map-card-hint', text: hint }),
+      el('div', { className: 'map-card-actions' }, [
+        makeButton({
+          label: '开始 ▶',
+          className: 'btn-green',
+          onClick: () => {
+            this.hideCard();
+            onStart();
+          },
+        }),
+        makeButton({ label: '关闭', onClick: () => this.hideCard() }),
+      ]),
+    ]);
+    const backdrop = el('div', { className: 'map-card-backdrop' }, [card]);
+    backdrop.addEventListener('pointerdown', (e) => {
+      if (e.target === backdrop) this.hideCard();
+    });
+    this.card = backdrop;
+    this.uiRoot.append(backdrop);
   }
 
   /** 刷新每个节点标签的文字与星级/锁定态 */

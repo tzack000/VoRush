@@ -2,7 +2,7 @@
 
 ## Purpose
 
-本规格由 change `school-word-packs`、`leveled-word-packs`、`overworld-map` 同步而来，描述关卡/词包选择与记录隔离的系统行为。
+本规格由 change `school-word-packs`、`leveled-word-packs`、`overworld-map`、`review-patrol` 同步而来，描述关卡/词包选择与记录隔离的系统行为。
 
 ## Requirements
 
@@ -42,3 +42,17 @@
 
 - **WHEN** 玩家在动物包答对 cat 后切换到 T1D1 包所在关卡
 - **THEN** T1D1 包的学习记录不含 cat 的答题历史，动物包记录保持完整
+
+### Requirement: 大地图可进入复习巡逻
+
+关卡选择界面（3D 大地图）在已通关至少 1 关后 SHALL 额外提供复习巡逻入口。复习使用的单词与记录 MUST 仍按词包隔离读写，不得把不同词包的记录写进同一键。
+
+#### Scenario: 通关后可从地图进入复习
+
+- **WHEN** 玩家已通关第 1 关并在大地图点击复习入口再确认开始
+- **THEN** 进入复习巡逻短会话，而不是进入某一关的战斗单局
+
+#### Scenario: 复习仍按包隔离写记录
+
+- **WHEN** 复习中答对动物包的 cat
+- **THEN** 只更新动物包的学习记录键，其他词包记录不变

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-本规格由 change `threejs-3d-migration`、`kr-style-building`、`overworld-map` 同步而来，描述 dom-ui-layer 规格 的系统行为。
+本规格由 change `threejs-3d-migration`、`kr-style-building`、`overworld-map`、`review-patrol` 同步而来，描述 dom-ui-layer 规格 的系统行为。
 
 ## Requirements
 
@@ -93,3 +93,26 @@ UI 覆盖层打开（答题、菜单、结算）时 MUST 屏蔽 3D 场景的指�
 
 - **WHEN** 短时间内连续点击多个锁定岛屿
 - **THEN** 屏幕上同时只有一条提示
+
+### Requirement: 复习入口与确认卡
+
+复习按钮与确认卡 SHALL 以 DOM 覆盖层实现于 3D 画布之上，按钮触控区不小于约 60pt。确认卡为模态：展示本轮可复习的说明（有到期词时告知「有单词该复习了」，否则告知可以再练练），提供开始与关闭；点击卡片外区域关闭且不开始复习。
+
+#### Scenario: 确认卡可关闭
+
+- **WHEN** 复习确认卡打开时玩家点击卡片外区域或关闭按钮
+- **THEN** 卡片关闭，不进入复习会话
+
+#### Scenario: 开始按钮够大
+
+- **WHEN** 在 iPad 上显示复习确认卡
+- **THEN** 开始与关闭按钮的 CSS 尺寸不小于约 60pt
+
+### Requirement: 复习完成面板
+
+复习会话结束后 SHALL 以 DOM 模态展示完成面板（祝贺 + 本轮单词），提供返回地图按钮，尺寸不小于约 60pt。关闭后面板 MUST 移除，不残留遮罩。
+
+#### Scenario: 完成后可回地图
+
+- **WHEN** 复习完成面板点击返回地图
+- **THEN** 面板移除，回到大地图且无残留遮罩

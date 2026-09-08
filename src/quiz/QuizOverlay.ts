@@ -9,6 +9,8 @@ export interface QuizHooks {
   onOutcome: (question: QuizQuestion, outcome: AnswerOutcome) => void;
   /** 全部题目完成 */
   onDone: () => void;
+  /** 可选标题（复习巡逻等） */
+  heading?: string;
 }
 
 /**
@@ -52,6 +54,9 @@ export class QuizOverlay {
     this.dim = dim;
     this.uiRoot.append(dim);
 
+    if (hooks.heading) {
+      panel.append(el('div', { className: 'quiz-heading', text: hooks.heading }));
+    }
     panel.append(el('div', {
       className: 'quiz-progress',
       text: `第 ${index + 1} / ${questions.length} 题`,

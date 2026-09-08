@@ -2,6 +2,7 @@ import { unlockAudio } from '../audio/sfx';
 import { LEVELS, type LevelDef } from '../data/levels';
 import { getLevelMap, type LevelMapDef } from '../data/levelMaps';
 import { clearedLevelIds, readClear, starCount } from '../data/progress';
+import { inspectReview } from '../learning/ReviewSelector';
 import { buildMapLayout, newlyUnlocked, nodeState } from '../data/mapLayout';
 import { WordAudio } from '../quiz/WordAudio';
 import { el, makeButton } from '../ui/dom';
@@ -14,16 +15,19 @@ import { WorldMap } from '../world/WorldMap';
 import { Tweens } from '../world/Tween';
 import { Vector3 } from 'three';
 import { LevelController } from './LevelController';
+import { ReviewSession } from './ReviewSession';
 
 /**
  * Game：组装渲染层、拾取层与流程编排。
  * 流程：开始界面（解锁音频）→ 3D 大地图 → LevelController(level)
- * → 结算后重玩本关或返回大地图（新解锁则播放解锁动画）。
+ * 或复习巡逻（ReviewSession）→ 结算后重玩本关或返回大地图（新解锁则播放解锁动画）。
  */
 export class Game {
   private controller: LevelController | null = null;
+  private review: ReviewSession | null = null;
   private map: WorldMap;
   private mapView: WorldMapView;
+  private uiRoot: HTMLElement;
   private layout = buildMapLayout();
   /** 进入单局前的通关集合，用于结算回来时判断新解锁 */
   private clearedBefore: ReadonlySet<string> = new Set();
@@ -34,6 +38,7 @@ export class Game {
   constructor(container: HTMLElement) {
     // DOM UI 覆盖层
     const uiRoot = el('div', { id: 'ui' });
+    this.uiRoot = uiRoot;
     container.append(uiRoot);
     container.append(el('div', { id: 'rotate-tip', text: '请旋转设备，横屏游玩 🔄' }));
 
@@ -48,7 +53,11 @@ export class Game {
       this.controller?.onPick(id),
     );
 
-    this.mapView = new WorldMapView(uiRoot, (level) => this.startLevel(island, picker, uiRoot, level));
+    this.mapView = new WorldMapView(
+      uiRoot,
+      (level) => this.startLevel(island, picker, uiRoot, level),
+      () => this.onTapReview(),
+    );
     this.map = new WorldMap(island, island.renderer.domElement, this.layout, (index) =>
       this.onTapNode(index),
     );
@@ -77,6 +86,7 @@ export class Game {
       },
       terrainInfo: () => island.terrainDebug(),
       battleStats: () => this.controller?.debugStats() ?? null,
+      reviewInfo: () => inspectReview(),
     };
 
     this.showStartOverlay(uiRoot, () => this.enterMap(true));
@@ -124,11 +134,14 @@ export class Game {
   private enterMap(focus: boolean): void {
     this.controller?.dispose();
     this.controller = null;
+    this.review?.dispose();
+    this.review = null;
     const cleared = clearedLevelIds();
     this.mapView.mount();
     this.map.show(cleared);
     if (focus) this.map.frameProgressReveal(cleared);
     this.refreshLabels(cleared);
+    this.refreshReview();
     // 结算遮罩可能仍开着，保险起见关掉
     if (this.pendingUnlock !== null) {
       const index = this.pendingUnlock;
@@ -161,6 +174,33 @@ export class Game {
     this.mapView.showCard(levelDef, state, starCount(readClear(levelDef.id)));
   }
 
+  private refreshReview(): void {
+    const info = inspectReview();
+    this.mapView.setReview({ unlocked: info.unlocked, dueCount: info.dueCount });
+  }
+
+  private onTapReview(): void {
+    const info = inspectReview();
+    if (!info.unlocked) return;
+    this.mapView.showReviewCard(info.dueCount, () => this.startReview());
+  }
+
+  private startReview(): void {
+    this.mapView.hideCard();
+    this.review?.dispose();
+    this.review = new ReviewSession(this.uiRoot, {
+      onDone: () => {
+        this.review = null;
+        this.refreshReview();
+      },
+    });
+    if (!this.review.begin()) {
+      this.review.dispose();
+      this.review = null;
+      this.mapView.toast('先去打一关认识单词吧！');
+    }
+  }
+
   /** 地图节点序号 → 关卡定义（词包与难度缩放都在里面） */
   private levelDef(index: number): LevelDef {
     const level = LEVELS[index - 1];
@@ -189,6 +229,8 @@ export class Game {
     level: LevelDef,
   ): void {
     this.clearedBefore = clearedLevelIds();
+    this.review?.dispose();
+    this.review = null;
     this.mapView.hideCard();
     this.map.hide();
     this.mapView.destroy();

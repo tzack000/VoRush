@@ -2,7 +2,7 @@
 
 ## Purpose
 
-本规格由 change `overworld-map`、`map-auto-framing`、`map-camera-transition` 同步而来，描述 3D 微缩岛屿大地图的系统行为：地图布局、节点状态、相机取景、拖拽与拾取、以及通关解锁的表现。
+本规格由 change `overworld-map`、`map-auto-framing`、`map-camera-transition`、`review-patrol` 同步而来，描述 3D 微缩岛屿大地图的系统行为：地图布局、节点状态、相机取景、拖拽与拾取、通关解锁、以及复习入口。
 
 ## Requirements
 
@@ -157,3 +157,17 @@
 
 - **WHEN** 某个关卡的进度数据不是合法 JSON
 - **THEN** 该关卡按未通关处理，地图正常渲染
+
+### Requirement: 大地图复习入口
+
+大地图在玩家至少通关 1 关后 SHALL 提供复习入口；未通关时不显示。有到期或最近答错的已学词时，入口 SHALL 带可辨识提示。点击入口先弹出确认卡，确认后开始复习巡逻，不触发进关。
+
+#### Scenario: 通关后可见复习入口
+
+- **WHEN** 玩家已通关第 1 关并进入大地图
+- **THEN** 地图上出现复习按钮，点击后打开复习确认卡而不是关卡信息卡
+
+#### Scenario: 未通关不显示
+
+- **WHEN** 玩家一关未通关进入大地图
+- **THEN** 不显示复习按钮
